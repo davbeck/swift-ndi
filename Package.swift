@@ -14,10 +14,16 @@ let package = Package(
 			targets: ["NDI"]
 		),
 	],
+	dependencies: [
+		.package(url: "https://github.com/pointfreeco/swift-dependencies.git", from: "1.6.4"),
+	],
 	targets: [
 		.target(
 			name: "NDI",
-			dependencies: ["libNDI"],
+			dependencies: [
+				"libNDI",
+				.product(name: "Dependencies", package: "swift-dependencies"),
+			],
 			linkerSettings: [
 				.unsafeFlags([
 					"-L/Library/NDI SDK for Apple/lib/macOS",

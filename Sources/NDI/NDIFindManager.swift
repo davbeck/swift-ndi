@@ -1,3 +1,4 @@
+import Dependencies
 import libNDI
 import Observation
 import Synchronization
@@ -20,6 +21,9 @@ public final class NDIFindManager {
 		}
 	}
 
+	@ObservationIgnored
+	@Dependency(\.suspendingClock) private var clock
+
 	private let instance: NDIFind
 
 	public private(set) var sources: [NDISource] = []
@@ -40,7 +44,7 @@ public final class NDIFindManager {
 					await self.apply(sources: sources)
 				}
 
-				await Task.yield()
+				try await clock.sleep(for: .seconds(1))
 			}
 		}
 	}
