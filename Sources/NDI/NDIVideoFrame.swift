@@ -12,7 +12,7 @@ final class NDIVideoFrame: @unchecked Sendable {
 	}
 
 	deinit {
-		NDIlib_recv_free_video_v2(receiver.pNDI_recv, &ref)
+		receiver.ndi.NDIlib_recv_free_video_v2(receiver.pNDI_recv, &ref)
 	}
 
 	var resolution: CGSize {

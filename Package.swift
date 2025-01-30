@@ -23,12 +23,13 @@ let package = Package(
 			dependencies: [
 				"libNDI",
 				.product(name: "Dependencies", package: "swift-dependencies"),
+				.product(name: "DependenciesMacros", package: "swift-dependencies"),
 			],
 			linkerSettings: [
-				.unsafeFlags([
-					"-L/Library/NDI SDK for Apple/lib/macOS",
-				]),
-				.linkedLibrary("ndi", .when(platforms: [.macOS])),
+//				.unsafeFlags([
+//					"-L/Library/NDI SDK for Apple/lib/macOS",
+//				]),
+//				.linkedLibrary("ndi", .when(platforms: [.macOS])),
 			]
 		),
 		.systemLibrary(name: "libNDI"),

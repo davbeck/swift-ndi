@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import Dependencies
 import libNDI
 import OSLog
 
@@ -10,15 +11,10 @@ final class NDIReceiver: @unchecked Sendable {
 
 	let pNDI_recv: NDIlib_recv_instance_t
 
-	convenience init?(source: NDISource? = nil) {
-		guard let ndi = NDI.shared else {
-			return nil
-		}
+	init?(source: NDISource? = nil) {
+		@Dependency(\.ndi) var ndi
+		guard let ndi else { return nil }
 
-		self.init(ndi: ndi, source: source)
-	}
-
-	init(ndi: NDI, source: NDISource? = nil) {
 		self.ndi = ndi
 
 		var recv_desc = NDIlib_recv_create_v3_t(
@@ -28,15 +24,16 @@ final class NDIReceiver: @unchecked Sendable {
 			allow_video_fields: true,
 			p_ndi_recv_name: nil
 		)
-		pNDI_recv = NDIlib_recv_create_v3(&recv_desc)
+		guard let pNDI_recv = ndi.NDIlib_recv_create_v3(&recv_desc) else { return nil }
+		self.pNDI_recv = pNDI_recv
 	}
 
 	deinit {
-		NDIlib_recv_destroy(pNDI_recv)
+		ndi.NDIlib_recv_destroy(pNDI_recv)
 	}
 
 	func connect(name: String) async {
-		guard let find = NDIFind(ndi: self.ndi) else { return }
+		guard let find = NDIFind() else { return }
 		guard let source = await find.getSource(named: name) else { return }
 
 		self.connect(source)
@@ -45,7 +42,7 @@ final class NDIReceiver: @unchecked Sendable {
 	func connect(_ source: NDISource) {
 		var sourceRef = source.ref
 
-		NDIlib_recv_connect(pNDI_recv, &sourceRef)
+		ndi.NDIlib_recv_connect(pNDI_recv, &sourceRef)
 	}
 
 	func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIFrame {
@@ -84,7 +81,7 @@ final class NDIReceiver: @unchecked Sendable {
 		let frameType = withUnsafeMutablePointer(to: &video_frame) { video_frame in
 			withUnsafeMutablePointer(to: &audio_frame) { audio_frame in
 				withUnsafeMutablePointer(to: &metadata_frame) { metadata_frame in
-					NDIlib_recv_capture_v3(
+					ndi.NDIlib_recv_capture_v3(
 						pNDI_recv,
 						types.contains(.video) ? video_frame : nil,
 						types.contains(.audio) ? audio_frame : nil,
@@ -108,7 +105,7 @@ final class NDIReceiver: @unchecked Sendable {
 			return .audio(audioFrame)
 		case NDIlib_frame_type_metadata:
 			logger.debug("NDIlib_frame_type_metadata")
-			NDIlib_recv_free_metadata(pNDI_recv, &metadata_frame)
+			ndi.NDIlib_recv_free_metadata(pNDI_recv, &metadata_frame)
 
 			return .metadata
 		case NDIlib_frame_type_status_change:

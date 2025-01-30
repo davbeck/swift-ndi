@@ -1,4 +1,3 @@
-import Dependencies
 import libNDI
 import Observation
 import Synchronization
@@ -21,9 +20,6 @@ public final class NDIFindManager {
 		}
 	}
 
-	@ObservationIgnored
-	@Dependency(\.suspendingClock) private var clock
-
 	private let instance: NDIFind
 
 	public private(set) var sources: [NDISource] = []
@@ -39,12 +35,11 @@ public final class NDIFindManager {
 		Task.detached(priority: .background) { [weak self] in
 			while !Task.isCancelled {
 				guard let self else { return }
-				if instance.waitForSources(timeout: .zero) {
+
+				if await instance.waitForSources() {
 					let sources = instance.getCurrentSources()
 					await self.apply(sources: sources)
 				}
-
-				try await clock.sleep(for: .seconds(1))
 			}
 		}
 	}

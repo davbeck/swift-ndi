@@ -12,7 +12,7 @@ final class NDIAudioFrame: @unchecked Sendable {
 	}
 
 	deinit {
-		NDIlib_recv_free_audio_v3(receiver.pNDI_recv, &ref)
+		receiver.ndi.NDIlib_recv_free_audio_v3(receiver.pNDI_recv, &ref)
 	}
 
 	/// The sample-rate of this buffer.

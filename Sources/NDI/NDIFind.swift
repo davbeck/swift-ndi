@@ -1,3 +1,4 @@
+import Dependencies
 import libNDI
 import Observation
 
@@ -7,23 +8,20 @@ import Observation
 ///
 /// On mDNS initialization (often done using the NDI-FIND SDK), a few seconds might elapse before all sources on the network are located. Be aware that some network routers might block mDNS traffic between network segments.
 class NDIFind: @unchecked Sendable {
+	@Dependency(\.suspendingClock) private var clock
+
 	let ndi: NDI
 
 	private let pNDI_find: NDIlib_find_instance_t
 
-	convenience init?() {
-		guard let ndi = NDI.shared else {
-			return nil
-		}
+	public init?() {
+		@Dependency(\.ndi) var ndi
 
-		self.init(ndi: ndi)
-	}
+		guard let ndi else { return nil }
 
-	init?(ndi: NDI) {
 		self.ndi = ndi
 
-		guard let pNDI_find = NDIlib_find_create_v2(nil) else {
-			assertionFailure("NDIlib_find_create_v2 failed")
+		guard let pNDI_find = ndi.NDIlib_find_create_v2(nil) else {
 			return nil
 		}
 
@@ -31,18 +29,43 @@ class NDIFind: @unchecked Sendable {
 	}
 
 	deinit {
-		NDIlib_find_destroy(pNDI_find)
+		ndi.NDIlib_find_destroy(pNDI_find)
+	}
+
+	func _waitForSources(timeout: Duration = .zero) -> Bool {
+		ndi.NDIlib_find_wait_for_sources(pNDI_find, UInt32(timeout.milliseconds))
 	}
 
 	/// This will allow you to wait until the number of online sources have changed.
 	func waitForSources(timeout: Duration = .zero) -> Bool {
-		NDIlib_find_wait_for_sources(pNDI_find, UInt32(timeout.seconds * 1000))
+		_waitForSources(timeout: timeout)
+	}
+	
+	func waitForSources(timeout: Duration? = nil) async -> Bool {
+		let deadline = timeout.map { clock.now.advanced(by: $0) }
+
+		return await self.waitForSources(deadline: deadline)
+	}
+
+	private func waitForSources(deadline: (any InstantProtocol<Duration>)?) async -> Bool {
+		while !Task.isCancelled {
+			if let deadline {
+				guard clock.now.isBefore(deadline) else { return false }
+			}
+
+			if _waitForSources(timeout: .zero) {
+				return true
+			}
+
+			try? await clock.sleep(for: .seconds(0.01))
+		}
+
+		return false
 	}
 
 	func getCurrentSources() -> [NDISource] {
 		var no_sources: UInt32 = 0
-		guard let p_sources: UnsafePointer<NDIlib_source_t> = NDIlib_find_get_current_sources(pNDI_find, &no_sources) else {
-			assertionFailure("NDIlib_find_get_current_sources failed")
+		guard let p_sources: UnsafePointer<NDIlib_source_t> = ndi.NDIlib_find_get_current_sources(pNDI_find, &no_sources) else {
 			return []
 		}
 
@@ -51,19 +74,30 @@ class NDIFind: @unchecked Sendable {
 		}
 	}
 
-	func getSource(named name: String) async -> NDISource? {
-		while !Task.isCancelled {
-			if waitForSources() {
-				let sources = getCurrentSources()
+	func getSource(named name: String, timeout: Duration? = nil) async -> NDISource? {
+		let deadline = timeout.map { clock.now.advanced(by: $0) }
+		
+		if let source = getCurrentSources().first(where: { $0.name == name }) {
+			return source
+		}
 
-				if let source = sources.first(where: { $0.name == name }) {
-					return source
-				}
+		while !Task.isCancelled {
+			if let deadline {
+				guard clock.now.isBefore(deadline) else { return nil }
 			}
 
-			await Task.yield()
+			if await waitForSources(deadline: deadline), let source = getCurrentSources().first(where: { $0.name == name }) {
+				return source
+			}
 		}
 
 		return nil
+	}
+}
+
+private extension InstantProtocol where Duration == Duration {
+	func isBefore(_ other: any InstantProtocol<Duration>) -> Bool {
+		guard let other = other as? Self else { return false }
+		return self < other
 	}
 }
