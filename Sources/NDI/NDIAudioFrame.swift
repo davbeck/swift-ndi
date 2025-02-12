@@ -2,7 +2,7 @@ import AVFoundation
 import CoreMedia
 import libNDI
 
-final class NDIAudioFrame: @unchecked Sendable {
+public final class NDIAudioFrame: @unchecked Sendable {
 	let receiver: NDIReceiver
 	fileprivate var ref: NDIlib_audio_frame_v3_t
 
@@ -164,7 +164,7 @@ final class NDIAudioFrame: @unchecked Sendable {
 }
 
 extension NDIAudioFrame: CustomStringConvertible {
-	var description: String {
+	public var description: String {
 		"<NDIAudioFrame sample_rate: \(sampleRate), no_channels: \(numberOfChannels), no_samples: \(numberOfSamples), timecode: \(timecode), channel_stride_in_bytes: \(ref.channel_stride_in_bytes), p_metadata: \(metadata ?? ""), timestamp: \(timestamp?.formatted() ?? "none")>"
 	}
 }

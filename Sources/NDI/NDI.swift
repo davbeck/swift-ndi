@@ -3,6 +3,8 @@ import DependenciesMacros
 import libNDI
 import OSLog
 
+private let logger = Logger(subsystem: "swift-ndi", category: "library")
+
 @DependencyClient
 struct NDI: Sendable {
 	/// The units that time is represented in (100ns) per second
@@ -51,9 +53,17 @@ extension NDI {
 	init?(libraryPath: String) {
 		typealias LoadFunc = @convention(c) () -> UnsafePointer<NDIlib_v5>?
 
-		guard let handle = dlopen(libraryPath, RTLD_NOW) else { return nil }
+		guard let handle = dlopen(libraryPath, RTLD_NOW) else {
+			if let errorMessage = dlerror() {
+				logger.info("failed to load NDI library: \(String(cString: errorMessage))")
+			}
+			
+			return nil
+		}
 		defer { dlclose(handle) }
-		guard let sym = dlsym(handle, "NDIlib_v5_load") else { return nil }
+		guard let sym = dlsym(handle, "NDIlib_v5_load") else {
+			return nil
+		}
 		let NDIlib_v5_load = unsafeBitCast(sym, to: LoadFunc.self)
 
 		guard let libPointer = NDIlib_v5_load() else { return nil }
@@ -81,7 +91,7 @@ extension NDI {
 		)
 	}
 
-	static let shared: NDI? = NDI(libraryPath: "/usr/local/lib/libndi.dylib")
+	static let shared: NDI? = NDI(libraryPath: "libndi.dylib") ?? NDI(libraryPath: "/usr/local/lib/libndi.dylib")
 }
 
 extension NDI: DependencyKey {

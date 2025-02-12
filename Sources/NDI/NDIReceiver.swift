@@ -4,14 +4,14 @@ import Dependencies
 import libNDI
 import OSLog
 
-final class NDIReceiver: @unchecked Sendable {
-	let logger = Logger(category: "NDIReceiver")
+public final class NDIReceiver: @unchecked Sendable {
+	private let logger = Logger(category: "NDIReceiver")
 
 	let ndi: NDI
 
 	let pNDI_recv: NDIlib_recv_instance_t
 
-	init?(source: NDISource? = nil) {
+	public init?(source: NDISource? = nil) {
 		@Dependency(\.ndi) var ndi
 		guard let ndi else { return nil }
 
@@ -32,20 +32,20 @@ final class NDIReceiver: @unchecked Sendable {
 		ndi.NDIlib_recv_destroy(pNDI_recv)
 	}
 
-	func connect(name: String) async {
+	public func connect(name: String) async {
 		guard let find = NDIFind() else { return }
 		guard let source = await find.getSource(named: name) else { return }
 
 		self.connect(source)
 	}
 
-	func connect(_ source: NDISource) {
+	public func connect(_ source: NDISource) {
 		var sourceRef = source.ref
 
 		ndi.NDIlib_recv_connect(pNDI_recv, &sourceRef)
 	}
 
-	func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIFrame {
+	public func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIFrame {
 		// The descriptors
 		var video_frame: NDIlib_video_frame_v2_t = .init(
 			xres: 0,
@@ -104,10 +104,9 @@ final class NDIReceiver: @unchecked Sendable {
 
 			return .audio(audioFrame)
 		case NDIlib_frame_type_metadata:
-			logger.debug("NDIlib_frame_type_metadata")
-			ndi.NDIlib_recv_free_metadata(pNDI_recv, &metadata_frame)
+			let metadataFrame = NDIMetadataFrame(metadata_frame, receiver: self)
 
-			return .metadata
+			return .metadata(metadataFrame)
 		case NDIlib_frame_type_status_change:
 			logger.debug("Status changed")
 
@@ -120,17 +119,17 @@ final class NDIReceiver: @unchecked Sendable {
 	}
 }
 
-enum NDICaptureType: CaseIterable {
+public enum NDICaptureType: CaseIterable, Sendable {
 	case video
 	case audio
 	case metadata
 }
 
-enum NDIFrame {
+public enum NDIFrame: Sendable {
 	case none
 	case video(NDIVideoFrame)
 	case audio(NDIAudioFrame)
-	case metadata
+	case metadata(NDIMetadataFrame)
 	case statusChange
 	case unknown
 }

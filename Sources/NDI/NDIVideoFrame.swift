@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreImage
 import libNDI
 
-final class NDIVideoFrame: @unchecked Sendable {
+public final class NDIVideoFrame: @unchecked Sendable {
 	let receiver: NDIReceiver
 	fileprivate var ref: NDIlib_video_frame_v2_t
 

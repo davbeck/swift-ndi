@@ -2,10 +2,10 @@ import Foundation
 import libNDI
 import Synchronization
 
-actor NDIPlayer {
+public actor NDIPlayer {
 	private static let playerPool: Mutex<[String: Weak<NDIPlayer>]> = .init([:])
 
-	static func player(for name: String) -> NDIPlayer {
+	public static func player(for name: String) -> NDIPlayer {
 		playerPool.withLock { pool in
 			if let player = pool[name]?.value {
 				return player
@@ -17,95 +17,108 @@ actor NDIPlayer {
 		}
 	}
 
-	private var receiver: NDIReceiver?
-
-	let sourceName: String
+	public let sourceName: String
 	private var source: NDISource?
 
-	init(name: String) {
+	public init(name: String) {
 		self.sourceName = name
 	}
 
-	init(source: NDISource) {
+	public init(source: NDISource) {
 		self.sourceName = source.name
 		self.source = source
 	}
 
+	private var getReceiverTask: Task<NDIReceiver?, Never>?
+
 	private func getReceiver() async -> NDIReceiver? {
-		if let receiver {
-			return receiver
-		} else if let source {
-			guard let receiver = NDIReceiver(source: source) else { return nil }
-
-			self.receiver = receiver
-			return receiver
+		if let getReceiverTask {
+			return await getReceiverTask.value
 		} else {
-			guard let receiver = NDIReceiver() else { return nil }
+			let task = Task { () -> NDIReceiver? in
+				if let source {
+					guard let receiver = NDIReceiver(source: source) else { return nil }
 
-			await receiver.connect(name: sourceName)
+					return receiver
+				} else {
+					guard let receiver = NDIReceiver() else { return nil }
 
-			self.receiver = receiver
-			return receiver
+					await receiver.connect(name: sourceName)
+
+					return receiver
+				}
+			}
+			getReceiverTask = task
+			return await task.value
 		}
 	}
 
 	private var lastVideoFrame: NDIVideoFrame?
 
-	private func receive(types: Set<NDICaptureType>) async {
-		guard let receiver = await getReceiver() else { return }
-
-		while !Task.isCancelled {
-			let frame = receiver.capture(types: types)
-
-			switch frame {
-			case let .video(frame):
-				lastVideoFrame = frame
-				for (_, continuation) in videoFramesContinuations {
-					continuation.yield(frame)
-				}
-			case let .audio(frame):
-				for (_, continuation) in audioFramesContinuations {
-					continuation.yield(frame)
-				}
-			default:
-				break
-			}
-
-			await Task.yield()
-		}
-	}
-
-	var isConnected: Bool {
-		receiver != nil
-	}
-
-	func connect() async -> Bool {
-		await getReceiver() != nil
-	}
-
-	// MARK: - Video
-
-	typealias VideoFrameStream = AsyncStream<NDIVideoFrame>
-
-	private var videoFramesTask: Task<Void, Never>? {
+	private var receiveThread: Thread? {
 		didSet {
 			oldValue?.cancel()
 		}
 	}
 
-	private var videoFramesContinuations: [UUID: VideoFrameStream.Continuation] = [:] {
-		didSet {
-			if videoFramesContinuations.isEmpty {
-				videoFramesTask = nil
-			} else if videoFramesTask == nil || videoFramesTask?.isCancelled == true {
-				videoFramesTask = Task {
-					await self.receive(types: [.video])
+	private func updateReceiving() async {
+		if videoFramesContinuations.isEmpty && audioFramesContinuations.isEmpty && metadataContinuations.isEmpty {
+			receiveThread = nil
+		} else {
+			await self.receive()
+		}
+	}
+
+	private func receive() async {
+		guard let receiver = await getReceiver() else { return }
+
+		let thread = Thread.detachNewThread { [weak self] in
+			while !Thread.current.isCancelled {
+				let frame = receiver.capture(timeout: .seconds(1))
+
+				if let self {
+					Task {
+						await self.receive(frame: frame)
+					}
+				} else {
+					return
 				}
 			}
 		}
 	}
 
-	private func registerVideoContinuation(_ continuation: VideoFrameStream.Continuation) {
+	private func receive(frame: NDIFrame) {
+		switch frame {
+		case let .video(frame):
+			lastVideoFrame = frame
+			for (_, continuation) in videoFramesContinuations {
+				continuation.yield(frame)
+			}
+		case let .audio(frame):
+			for (_, continuation) in audioFramesContinuations {
+				continuation.yield(frame)
+			}
+		case let .metadata(frame):
+			for (_, continuation) in metadataContinuations {
+				continuation.yield(frame)
+			}
+		default:
+			break
+		}
+	}
+
+	@discardableResult
+	public func connect() async -> Bool {
+		await getReceiver() != nil
+	}
+
+	// MARK: - Video
+
+	public typealias VideoFrameStream = AsyncStream<NDIVideoFrame>
+
+	private var videoFramesContinuations: [UUID: VideoFrameStream.Continuation] = [:]
+
+	private func registerVideoContinuation(_ continuation: VideoFrameStream.Continuation) async {
 		if let lastVideoFrame {
 			continuation.yield(lastVideoFrame)
 		}
@@ -118,14 +131,17 @@ actor NDIPlayer {
 				await self.unregisterVideoContinuation(id)
 			}
 		}
+
+		await updateReceiving()
 	}
 
-	private func unregisterVideoContinuation(_ id: UUID) {
+	private func unregisterVideoContinuation(_ id: UUID) async {
 		self.videoFramesContinuations.removeValue(forKey: id)
+
+		await updateReceiving()
 	}
 
-	nonisolated
-	var videoFrames: VideoFrameStream {
+	public nonisolated var videoFrames: VideoFrameStream {
 		let (stream, continuation) = VideoFrameStream.makeStream(bufferingPolicy: .bufferingNewest(1))
 
 		Task {
@@ -139,25 +155,9 @@ actor NDIPlayer {
 
 	typealias AudioFrameStream = AsyncStream<NDIAudioFrame>
 
-	private var audioFramesTask: Task<Void, Never>? {
-		didSet {
-			oldValue?.cancel()
-		}
-	}
+	private var audioFramesContinuations: [UUID: AudioFrameStream.Continuation] = [:]
 
-	private var audioFramesContinuations: [UUID: AudioFrameStream.Continuation] = [:] {
-		didSet {
-			if audioFramesContinuations.isEmpty {
-				audioFramesTask = nil
-			} else if audioFramesTask == nil || audioFramesTask?.isCancelled == true {
-				audioFramesTask = Task {
-					await self.receive(types: [.audio])
-				}
-			}
-		}
-	}
-
-	private func registerAudioContinuation(_ continuation: AudioFrameStream.Continuation) {
+	private func registerAudioContinuation(_ continuation: AudioFrameStream.Continuation) async {
 		let id = UUID()
 		audioFramesContinuations[id] = continuation
 
@@ -166,10 +166,14 @@ actor NDIPlayer {
 				await self.unregisterAudioContinuation(id)
 			}
 		}
+
+		await updateReceiving()
 	}
 
-	private func unregisterAudioContinuation(_ id: UUID) {
+	private func unregisterAudioContinuation(_ id: UUID) async {
 		self.audioFramesContinuations.removeValue(forKey: id)
+
+		await updateReceiving()
 	}
 
 	nonisolated
@@ -178,6 +182,41 @@ actor NDIPlayer {
 
 		Task {
 			await self.registerAudioContinuation(continuation)
+		}
+
+		return stream
+	}
+
+	// MARK: - Metadata
+
+	public typealias MetadataStream = AsyncStream<NDIMetadataFrame>
+
+	private var metadataContinuations: [UUID: MetadataStream.Continuation] = [:]
+
+	private func registerMetadataContinuation(_ continuation: MetadataStream.Continuation) async {
+		let id = UUID()
+		metadataContinuations[id] = continuation
+
+		continuation.onTermination = { reason in
+			Task {
+				await self.unregisterMetadataContinuation(id)
+			}
+		}
+
+		await updateReceiving()
+	}
+
+	private func unregisterMetadataContinuation(_ id: UUID) async {
+		self.metadataContinuations.removeValue(forKey: id)
+
+		await updateReceiving()
+	}
+
+	public nonisolated var metadataFrames: MetadataStream {
+		let (stream, continuation) = MetadataStream.makeStream(bufferingPolicy: .bufferingNewest(0))
+
+		Task {
+			await self.registerMetadataContinuation(continuation)
 		}
 
 		return stream
