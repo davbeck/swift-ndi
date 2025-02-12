@@ -49,24 +49,40 @@ struct NDI: Sendable {
 	var NDIlib_recv_free_metadata: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
 }
 
+public enum NDILoadError: Error, LocalizedError {
+	case dlopenFailed(String?)
+	case loadMethodNotFound(String?)
+	case loadFailed
+	
+	public var errorDescription: String? {
+		String(localized: "Failed to load NDI library.")
+	}
+}
+
 extension NDI {
-	init?(libraryPath: String) {
+	init(libraryPath: String) throws(NDILoadError) {
 		typealias LoadFunc = @convention(c) () -> UnsafePointer<NDIlib_v5>?
 
 		guard let handle = dlopen(libraryPath, RTLD_NOW) else {
 			if let errorMessage = dlerror() {
-				logger.info("failed to load NDI library: \(String(cString: errorMessage))")
+				throw NDILoadError.dlopenFailed(String(cString: errorMessage))
 			}
 			
-			return nil
+			throw NDILoadError.dlopenFailed(nil)
 		}
 		defer { dlclose(handle) }
 		guard let sym = dlsym(handle, "NDIlib_v5_load") else {
-			return nil
+			if let errorMessage = dlerror() {
+				throw NDILoadError.loadMethodNotFound(String(cString: errorMessage))
+			}
+			
+			throw NDILoadError.loadMethodNotFound(nil)
 		}
 		let NDIlib_v5_load = unsafeBitCast(sym, to: LoadFunc.self)
 
-		guard let libPointer = NDIlib_v5_load() else { return nil }
+		guard let libPointer = NDIlib_v5_load() else {
+			throw NDILoadError.loadFailed
+		}
 
 		self.init(libPointer.pointee)
 	}
@@ -91,7 +107,18 @@ extension NDI {
 		)
 	}
 
-	static let shared: NDI? = NDI(libraryPath: "libndi.dylib") ?? NDI(libraryPath: "/usr/local/lib/libndi.dylib")
+	static let shared: NDI? = {
+		do {
+			do {
+				return try NDI(libraryPath: "libndi.dylib")
+			} catch {
+				return try NDI(libraryPath: "/usr/local/lib/libndi.dylib")
+			}
+		} catch {
+			logger.error("Failed to load NDI: \(error)")
+			return nil
+		}
+	}()
 }
 
 extension NDI: DependencyKey {
