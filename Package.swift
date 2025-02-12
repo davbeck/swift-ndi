@@ -15,7 +15,8 @@ let package = Package(
 		),
 	],
 	dependencies: [
-		.package(url: "https://github.com/pointfreeco/swift-dependencies.git", from: "1.6.4"),
+		.package(url: "https://github.com/pointfreeco/swift-dependencies.git", from: "1.7.0"),
+		.package(url: "https://github.com/pointfreeco/xctest-dynamic-overlay", from: "1.4.0"),
 	],
 	targets: [
 		.target(
@@ -24,6 +25,7 @@ let package = Package(
 				"libNDI",
 				.product(name: "Dependencies", package: "swift-dependencies"),
 				.product(name: "DependenciesMacros", package: "swift-dependencies"),
+				.product(name: "IssueReporting", package: "xctest-dynamic-overlay"),
 			],
 			linkerSettings: [
 //				.unsafeFlags([
