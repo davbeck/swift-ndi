@@ -63,8 +63,6 @@ struct NDIFindTests {
 	struct getSource {
 		@Test
 		func withoutTimeout() async throws {
-			nonisolated(unsafe) let instance = NDIlib_find_instance_t.test
-
 			var ndi = NDI()
 			
 			let findMock = NDIFindMockInstance()
