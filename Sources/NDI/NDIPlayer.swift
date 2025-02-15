@@ -72,7 +72,7 @@ public actor NDIPlayer {
 	private func receive() async {
 		guard let receiver = await getReceiver() else { return }
 
-		let thread = Thread.detachNewThread { [weak self] in
+		let thread = Thread { [weak self] in
 			while !Thread.current.isCancelled {
 				let frame = receiver.capture(timeout: .seconds(1))
 
@@ -85,6 +85,8 @@ public actor NDIPlayer {
 				}
 			}
 		}
+		thread.start()
+		receiveThread = thread
 	}
 
 	private func receive(frame: NDIFrame) {
