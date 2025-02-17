@@ -3,7 +3,7 @@ import CoreImage
 import libNDI
 
 public final class NDIVideoFrame: @unchecked Sendable {
-	let receiver: NDIReceiver
+	public let receiver: NDIReceiver
 	fileprivate var ref: NDIlib_video_frame_v2_t
 
 	init(_ ref: NDIlib_video_frame_v2_t, receiver: NDIReceiver) {
@@ -15,24 +15,24 @@ public final class NDIVideoFrame: @unchecked Sendable {
 		receiver.ndi.NDIlib_recv_free_video_v2(receiver.pNDI_recv, &ref)
 	}
 
-	var resolution: CGSize {
+	public var resolution: CGSize {
 		.init(width: CGFloat(ref.xres), height: CGFloat(ref.yres))
 	}
 
-	var timecode: Duration {
+	public var timecode: Duration {
 		Duration.nanoseconds(ref.timecode * 100)
 	}
 
-	var timestamp: Date? {
+	public var timestamp: Date? {
 		Date(ndiTimestamp: ref.timestamp)
 	}
 
-	var metadata: String? {
+	public var metadata: String? {
 		guard let p_metadata = ref.p_metadata else { return nil }
 		return String(cString: p_metadata)
 	}
 
-	var pixelBuffer: CVPixelBuffer? {
+	public var pixelBuffer: CVPixelBuffer? {
 		// from https://github.com/atelierars/swift-NDI/blob/86f05245faa334b3b9e0835543ce6b020a3a32d0/Sources/NDILib/Recv.swift
 		switch ref.FourCC {
 		case NDIlib_FourCC_video_type_UYVY:

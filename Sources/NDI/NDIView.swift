@@ -7,7 +7,7 @@ import SwiftUI
 public struct NDIView: NSViewRepresentable {
 	public typealias NSViewType = MTKView
 
-	var player: NDIPlayer
+	public var player: NDIPlayer
 	
 	public init(player: NDIPlayer) {
 		self.player = player

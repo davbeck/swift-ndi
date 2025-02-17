@@ -3,7 +3,7 @@ import CoreImage
 import libNDI
 
 public final class NDIMetadataFrame: @unchecked Sendable {
-	let receiver: NDIReceiver
+	public let receiver: NDIReceiver
 	fileprivate var ref: NDIlib_metadata_frame_t
 
 	init(_ ref: NDIlib_metadata_frame_t, receiver: NDIReceiver) {
@@ -15,11 +15,11 @@ public final class NDIMetadataFrame: @unchecked Sendable {
 		receiver.ndi.NDIlib_recv_free_metadata(receiver.pNDI_recv, &ref)
 	}
 
-	var timecode: Duration {
+	public var timecode: Duration {
 		Duration.nanoseconds(ref.timecode * 100)
 	}
 
-	var value: String? {
+	public var value: String? {
 		guard let p_data = ref.p_data else { return nil }
 		if ref.length == 0 {
 			return String(cString: p_data)

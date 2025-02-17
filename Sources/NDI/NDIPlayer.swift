@@ -155,7 +155,7 @@ public actor NDIPlayer {
 
 	// MARK: - Audio
 
-	typealias AudioFrameStream = AsyncStream<NDIAudioFrame>
+	public typealias AudioFrameStream = AsyncStream<NDIAudioFrame>
 
 	private var audioFramesContinuations: [UUID: AudioFrameStream.Continuation] = [:]
 
@@ -179,7 +179,7 @@ public actor NDIPlayer {
 	}
 
 	nonisolated
-	var audioFrames: AudioFrameStream {
+	public var audioFrames: AudioFrameStream {
 		let (stream, continuation) = AudioFrameStream.makeStream(bufferingPolicy: .bufferingNewest(1))
 
 		Task {

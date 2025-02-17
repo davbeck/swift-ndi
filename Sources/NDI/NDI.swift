@@ -6,9 +6,9 @@ import OSLog
 private let logger = Logger(subsystem: "swift-ndi", category: "library")
 
 @DependencyClient
-struct NDI: Sendable {
+public struct NDI: Sendable {
 	/// The units that time is represented in (100ns) per second
-	static let timescale: Int64 = 10_000_000
+	public static let timescale: Int64 = 10_000_000
 
 	// TODO: actually call thses
 
@@ -60,7 +60,7 @@ public enum NDILoadError: Error, LocalizedError {
 }
 
 extension NDI {
-	init(libraryPath: String) throws(NDILoadError) {
+	public init(libraryPath: String) throws(NDILoadError) {
 		typealias LoadFunc = @convention(c) () -> UnsafePointer<NDIlib_v5>?
 
 		guard let handle = dlopen(libraryPath, RTLD_NOW) else {
@@ -87,7 +87,7 @@ extension NDI {
 		self.init(libPointer.pointee)
 	}
 
-	init(_ lib: NDIlib_v5) {
+	public init(_ lib: NDIlib_v5) {
 		self.init(
 			NDIlib_initialize: { lib.NDIlib_initialize() },
 			NDIlib_destroy: { lib.NDIlib_destroy() },
@@ -107,7 +107,7 @@ extension NDI {
 		)
 	}
 
-	static let shared: NDI? = {
+	public static let shared: NDI? = {
 		do {
 			do {
 				return try NDI(libraryPath: "libndi.dylib")
@@ -122,15 +122,15 @@ extension NDI {
 }
 
 extension NDI: DependencyKey {
-	static var liveValue: NDI? {
+	public static var liveValue: NDI? {
 		shared
 	}
 
-	static let testValue: NDI? = NDI()
+	public static let testValue: NDI? = NDI()
 }
 
 extension DependencyValues {
-	var ndi: NDI? {
+	public var ndi: NDI? {
 		get { self[NDI.self] }
 		set { self[NDI.self] = newValue }
 	}

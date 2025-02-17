@@ -14,7 +14,7 @@ public struct NDISource: @unchecked Sendable {
 		self.allocator = find
 	}
 
-	init(name: String, url: String) {
+	public init(name: String, url: String) {
 		let allocator = NDISourceAllocator(name: name, url: url)
 		self.allocator = allocator
 		self.ref = NDIlib_source_t(
