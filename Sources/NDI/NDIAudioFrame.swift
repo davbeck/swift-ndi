@@ -39,7 +39,7 @@ public class NDIAudioFrame: @unchecked Sendable {
 		.nanoseconds((Int64(ref.no_samples) * 1_000_000_000) / Int64(ref.sample_rate))
 	}
 
-	public func sampleBuffer(presentationsTimeOffset: CMTime? = nil) throws -> CMSampleBuffer {
+	public func sampleBuffer(in clock: CMSyncProtocol? = nil) throws -> CMSampleBuffer {
 		switch ref.FourCC {
 		case NDIlib_FourCC_audio_type_FLTP:
 			var context = CFAllocatorContext(
@@ -108,12 +108,12 @@ public class NDIAudioFrame: @unchecked Sendable {
 			}
 
 			var presentationTime = CMTime(
-				// convert timestamp to sample_rate
-				value: .init(UInt128(ref.timestamp) * UInt128(ref.sample_rate) / UInt128(NDI.timescale)),
-				timescale: ref.sample_rate
+				value: ref.timecode,
+				timescale: CMTimeScale(NDI.timescale)
 			)
-			if let presentationsTimeOffset {
-				presentationTime = presentationTime - presentationsTimeOffset
+			
+			if let clock, let ndiClock = CMTimebase.ndi {
+				presentationTime = ndiClock.convertTime(presentationTime, to: clock)
 			}
 
 			var timingInfo = CMSampleTimingInfo(

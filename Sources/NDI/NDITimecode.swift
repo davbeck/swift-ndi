@@ -31,6 +31,20 @@ public extension CMTime {
 	}
 }
 
+public extension CMTimebase {
+	static let ndi: CMTimebase? = {
+		do {
+			let ndiTimeClock = try CMTimebase(sourceClock: CMClock.hostTimeClock)
+			try ndiTimeClock.setTime(CMTime(NDITimecode.now))
+			try ndiTimeClock.setRate(1)
+
+			return ndiTimeClock
+		} catch {
+			return nil
+		}
+	}()
+}
+
 public struct NDITimecodeGenerator: DependencyKey, Sendable {
 	var now: @Sendable () -> NDITimecode
 
