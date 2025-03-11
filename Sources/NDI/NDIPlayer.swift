@@ -53,7 +53,7 @@ public actor NDIPlayer {
 		}
 	}
 
-	private var lastVideoFrame: NDIVideoFrame?
+	private var lastVideoFrame: NDIReceivedVideoFrame?
 
 	private var receiveThread: Thread? {
 		didSet {
@@ -89,7 +89,7 @@ public actor NDIPlayer {
 		receiveThread = thread
 	}
 
-	private func receive(frame: NDIFrame) {
+	private func receive(frame: NDIReceivedFrame) {
 		switch frame {
 		case let .video(frame):
 			lastVideoFrame = frame
@@ -116,7 +116,7 @@ public actor NDIPlayer {
 
 	// MARK: - Video
 
-	public typealias VideoFrameStream = AsyncStream<NDIVideoFrame>
+	public typealias VideoFrameStream = AsyncStream<NDIReceivedVideoFrame>
 
 	private var videoFramesContinuations: [UUID: VideoFrameStream.Continuation] = [:]
 
@@ -155,7 +155,7 @@ public actor NDIPlayer {
 
 	// MARK: - Audio
 
-	public typealias AudioFrameStream = AsyncStream<NDIAudioFrame>
+	public typealias AudioFrameStream = AsyncStream<NDIReceivedAudioFrame>
 
 	private var audioFramesContinuations: [UUID: AudioFrameStream.Continuation] = [:]
 

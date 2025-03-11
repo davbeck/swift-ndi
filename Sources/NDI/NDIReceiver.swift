@@ -45,7 +45,7 @@ public final class NDIReceiver: @unchecked Sendable {
 		ndi.NDIlib_recv_connect(pNDI_recv, &sourceRef)
 	}
 
-	public func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIFrame {
+	public func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIReceivedFrame {
 		// The descriptors
 		var video_frame: NDIlib_video_frame_v2_t = .init(
 			xres: 0,
@@ -96,11 +96,11 @@ public final class NDIReceiver: @unchecked Sendable {
 		case NDIlib_frame_type_none:
 			return .none
 		case NDIlib_frame_type_video:
-			let videoFrame = NDIVideoFrame(video_frame, receiver: self)
+			let videoFrame = NDIReceivedVideoFrame(video_frame, receiver: self)
 
 			return .video(videoFrame)
 		case NDIlib_frame_type_audio:
-			let audioFrame = NDIAudioFrame(audio_frame, receiver: self)
+			let audioFrame = NDIReceivedAudioFrame(audio_frame, receiver: self)
 
 			return .audio(audioFrame)
 		case NDIlib_frame_type_metadata:
@@ -125,10 +125,10 @@ public enum NDICaptureType: CaseIterable, Sendable {
 	case metadata
 }
 
-public enum NDIFrame: Sendable {
+public enum NDIReceivedFrame: Sendable {
 	case none
-	case video(NDIVideoFrame)
-	case audio(NDIAudioFrame)
+	case video(NDIReceivedVideoFrame)
+	case audio(NDIReceivedAudioFrame)
 	case metadata(NDIMetadataFrame)
 	case statusChange
 	case unknown
