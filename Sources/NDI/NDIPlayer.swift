@@ -17,6 +17,7 @@ public actor NDIPlayer {
 		}
 	}
 
+	nonisolated
 	public let sourceName: String
 	private var source: NDISource?
 
