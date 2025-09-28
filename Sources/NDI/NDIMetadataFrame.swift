@@ -15,8 +15,9 @@ public final class NDIMetadataFrame: @unchecked Sendable {
 		receiver.ndi.NDIlib_recv_free_metadata(receiver.pNDI_recv, &ref)
 	}
 
-	public var timecode: Duration {
-		Duration.nanoseconds(ref.timecode * 100)
+	/// The timecode of this frame.
+	public var timecode: NDITimecode {
+		NDITimecode(rawValue: ref.timecode)
 	}
 
 	public var value: String? {

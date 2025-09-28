@@ -254,4 +254,42 @@ public final class NDIReceivedVideoFrame: NDIVideoFrame, @unchecked Sendable {
 		guard ref.timestamp != NDIlib_recv_timestamp_undefined else { return nil }
 		return NDITimecode(rawValue: ref.timestamp)
 	}
+
+	public var sampleBuffer: CMSampleBuffer? {
+		guard let pixelBuffer else { return nil }
+
+		var formatDescription: CMVideoFormatDescription?
+		guard
+			CMVideoFormatDescriptionCreateForImageBuffer(
+				allocator: kCFAllocatorDefault,
+				imageBuffer: pixelBuffer,
+				formatDescriptionOut: &formatDescription
+			) == noErr,
+			let formatDescription
+		else {
+			return nil
+		}
+
+		var timingInfo = CMSampleTimingInfo(
+			duration: .invalid,
+			presentationTimeStamp: presentationTime(),
+			decodeTimeStamp: .invalid
+		)
+
+		var sampleBuffer: CMSampleBuffer?
+		guard
+			CMSampleBufferCreateReadyWithImageBuffer(
+				allocator: kCFAllocatorDefault,
+				imageBuffer: pixelBuffer,
+				formatDescription: formatDescription,
+				sampleTiming: &timingInfo,
+				sampleBufferOut: &sampleBuffer
+			) == noErr,
+			let sampleBuffer
+		else {
+			return nil
+		}
+
+		return sampleBuffer
+	}
 }

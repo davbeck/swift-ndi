@@ -7,6 +7,8 @@ let package = Package(
 	name: "swift-ndi",
 	platforms: [
 		.macOS(.v15),
+		.tvOS(.v18),
+		.iOS(.v18),
 	],
 	products: [
 		.library(
@@ -32,6 +34,8 @@ let package = Package(
 //					"-L/Library/NDI SDK for Apple/lib/macOS",
 //				]),
 //				.linkedLibrary("ndi", .when(platforms: [.macOS])),
+				.linkedFramework("Accelerate"),
+				.linkedFramework("VideoToolbox"),
 			]
 		),
 		.systemLibrary(name: "libNDI"),
