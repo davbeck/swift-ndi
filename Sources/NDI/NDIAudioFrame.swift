@@ -78,16 +78,15 @@ public class NDIAudioFrame: @unchecked Sendable {
 				throw CMBlockBufferCreateWithMemoryBlockError(status: status)
 			}
 
-			var sampleBuffer: CMSampleBuffer?
 			let sampleSizeArray: [Int] = [MemoryLayout<Float32>.size]
 
 			var outputDescription = AudioStreamBasicDescription(
 				mSampleRate: .init(sampleRate),
 				mFormatID: kAudioFormatLinearPCM,
 				mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
-				mBytesPerPacket: 4, // 32-bit (4 bytes) per sample, per channel
+				mBytesPerPacket: UInt32(MemoryLayout<Float32>.size),
 				mFramesPerPacket: 1,
-				mBytesPerFrame: 4, // 32-bit (4 bytes) per sample, per channel
+				mBytesPerFrame: UInt32(MemoryLayout<Float32>.size),
 				mChannelsPerFrame: .init(numberOfChannels),
 				mBitsPerChannel: 32,
 				mReserved: 0
@@ -111,7 +110,7 @@ public class NDIAudioFrame: @unchecked Sendable {
 				value: ref.timecode,
 				timescale: CMTimeScale(NDI.timescale)
 			)
-			
+
 			if let clock, let ndiClock = CMTimebase.ndi {
 				presentationTime = ndiClock.convertTime(presentationTime, to: clock)
 			}
@@ -119,9 +118,10 @@ public class NDIAudioFrame: @unchecked Sendable {
 			var timingInfo = CMSampleTimingInfo(
 				duration: CMTime(value: 1, timescale: ref.sample_rate),
 				presentationTimeStamp: presentationTime,
-				decodeTimeStamp: presentationTime
+				decodeTimeStamp: .invalid
 			)
 
+			var sampleBuffer: CMSampleBuffer?
 			let sampleBufferStatus = CMSampleBufferCreateReady(
 				allocator: kCFAllocatorDefault,
 				dataBuffer: blockBuffer,
