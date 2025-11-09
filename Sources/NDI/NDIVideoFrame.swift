@@ -14,6 +14,11 @@ public class NDIVideoFrame: @unchecked Sendable {
 	public var resolution: CGSize {
 		.init(width: CGFloat(ref.xres), height: CGFloat(ref.yres))
 	}
+    
+    /// The frame rate of this frame.
+    public var frameRate: CGFloat {
+        CGFloat(ref.frame_rate_N/ref.frame_rate_D)
+    }
 
 	// Per frame metadata for this frame. This should be in XML format.
 	// If you do not want any metadata then you may specify nil here.
