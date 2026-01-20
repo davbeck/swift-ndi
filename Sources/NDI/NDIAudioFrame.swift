@@ -39,62 +39,124 @@ public class NDIAudioFrame: @unchecked Sendable {
 		.nanoseconds((Int64(ref.no_samples) * 1_000_000_000) / Int64(ref.sample_rate))
 	}
 
-	public func sampleBuffer(in clock: CMSyncProtocol? = nil) throws -> CMSampleBuffer {
+	public func sampleBuffer(in clock: CMSyncProtocol? = nil, interleaved: Bool = false) throws -> CMSampleBuffer {
 		switch ref.FourCC {
 		case NDIlib_FourCC_audio_type_FLTP:
-			var context = CFAllocatorContext(
-				version: 0,
-				info: Unmanaged.passRetained(self).toOpaque(),
-				retain: nil,
-				release: nil,
-				copyDescription: nil,
-				allocate: nil,
-				reallocate: nil,
-				deallocate: { _, info in
-					guard let info else { return }
-					Unmanaged<NDIAudioFrame>.fromOpaque(info).release()
-				},
-				preferredSize: nil
-			)
-			let blockAllocator = CFAllocatorCreate(kCFAllocatorDefault, &context)
-				.takeUnretainedValue()
+			let numChannels = Int(ref.no_channels)
+			let numSamples = Int(ref.no_samples)
+			let channelStride = Int(ref.channel_stride_in_bytes) / MemoryLayout<Float32>.size
 
-			let dataByteSize = ref.no_channels * ref.channel_stride_in_bytes
+			let blockBuffer: CMBlockBuffer
+			let outputDescription: AudioStreamBasicDescription
+			let sampleSize: Int
 
-			var blockBuffer: CMBlockBuffer?
-			let status = CMBlockBufferCreateWithMemoryBlock(
-				allocator: kCFAllocatorDefault,
-				memoryBlock: ref.p_data,
-				blockLength: Int(dataByteSize),
-				blockAllocator: blockAllocator,
-				customBlockSource: nil,
-				offsetToData: 0,
-				dataLength: Int(dataByteSize),
-				flags: 0,
-				blockBufferOut: &blockBuffer
-			)
+			if interleaved {
+				// Convert from planar to interleaved format
+				let bytesPerFrame = MemoryLayout<Float32>.size * numChannels
+				let interleavedDataSize = numSamples * bytesPerFrame
 
-			guard status == kCMBlockBufferNoErr, let blockBuffer else {
-				throw CMBlockBufferCreateWithMemoryBlockError(status: status)
+				let interleavedData = UnsafeMutablePointer<Float32>.allocate(capacity: numSamples * numChannels)
+
+				// Planar: [ch1_s1, ch1_s2, ..., ch1_sN, ch2_s1, ch2_s2, ..., ch2_sN]
+				// Interleaved: [ch1_s1, ch2_s1, ch1_s2, ch2_s2, ..., ch1_sN, ch2_sN]
+				let sourceData = UnsafeRawPointer(ref.p_data!).assumingMemoryBound(to: Float32.self)
+				for sampleIndex in 0..<numSamples {
+					for channelIndex in 0..<numChannels {
+						let sourceIndex = channelIndex * channelStride + sampleIndex
+						let destIndex = sampleIndex * numChannels + channelIndex
+						interleavedData[destIndex] = sourceData[sourceIndex]
+					}
+				}
+
+				var buffer: CMBlockBuffer?
+				let status = CMBlockBufferCreateWithMemoryBlock(
+					allocator: kCFAllocatorDefault,
+					memoryBlock: interleavedData,
+					blockLength: interleavedDataSize,
+					blockAllocator: kCFAllocatorMalloc,
+					customBlockSource: nil,
+					offsetToData: 0,
+					dataLength: interleavedDataSize,
+					flags: 0,
+					blockBufferOut: &buffer
+				)
+
+				guard status == kCMBlockBufferNoErr, let buffer else {
+					interleavedData.deallocate()
+					throw CMBlockBufferCreateWithMemoryBlockError(status: status)
+				}
+
+				blockBuffer = buffer
+				outputDescription = AudioStreamBasicDescription(
+					mSampleRate: .init(sampleRate),
+					mFormatID: kAudioFormatLinearPCM,
+					mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+					mBytesPerPacket: UInt32(bytesPerFrame),
+					mFramesPerPacket: 1,
+					mBytesPerFrame: UInt32(bytesPerFrame),
+					mChannelsPerFrame: UInt32(numChannels),
+					mBitsPerChannel: 32,
+					mReserved: 0
+				)
+				sampleSize = bytesPerFrame
+			} else {
+				// Native planar (non-interleaved) format
+				var context = CFAllocatorContext(
+					version: 0,
+					info: Unmanaged.passRetained(self).toOpaque(),
+					retain: nil,
+					release: nil,
+					copyDescription: nil,
+					allocate: nil,
+					reallocate: nil,
+					deallocate: { _, info in
+						guard let info else { return }
+						Unmanaged<NDIAudioFrame>.fromOpaque(info).release()
+					},
+					preferredSize: nil
+				)
+				let blockAllocator = CFAllocatorCreate(kCFAllocatorDefault, &context)
+					.takeUnretainedValue()
+
+				let dataByteSize = ref.no_channels * ref.channel_stride_in_bytes
+
+				var buffer: CMBlockBuffer?
+				let status = CMBlockBufferCreateWithMemoryBlock(
+					allocator: kCFAllocatorDefault,
+					memoryBlock: ref.p_data,
+					blockLength: Int(dataByteSize),
+					blockAllocator: blockAllocator,
+					customBlockSource: nil,
+					offsetToData: 0,
+					dataLength: Int(dataByteSize),
+					flags: 0,
+					blockBufferOut: &buffer
+				)
+
+				guard status == kCMBlockBufferNoErr, let buffer else {
+					throw CMBlockBufferCreateWithMemoryBlockError(status: status)
+				}
+
+				blockBuffer = buffer
+				outputDescription = AudioStreamBasicDescription(
+					mSampleRate: .init(sampleRate),
+					mFormatID: kAudioFormatLinearPCM,
+					mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
+					mBytesPerPacket: UInt32(MemoryLayout<Float32>.size),
+					mFramesPerPacket: 1,
+					mBytesPerFrame: UInt32(MemoryLayout<Float32>.size),
+					mChannelsPerFrame: UInt32(numChannels),
+					mBitsPerChannel: 32,
+					mReserved: 0
+				)
+				sampleSize = MemoryLayout<Float32>.size
 			}
 
-			let sampleSizeArray: [Int] = [MemoryLayout<Float32>.size]
-
-			var outputDescription = AudioStreamBasicDescription(
-				mSampleRate: .init(sampleRate),
-				mFormatID: kAudioFormatLinearPCM,
-				mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
-				mBytesPerPacket: UInt32(MemoryLayout<Float32>.size),
-				mFramesPerPacket: 1,
-				mBytesPerFrame: UInt32(MemoryLayout<Float32>.size),
-				mChannelsPerFrame: .init(numberOfChannels),
-				mBitsPerChannel: 32,
-				mReserved: 0
-			)
 			var formatDescription: CMAudioFormatDescription?
+			var desc = outputDescription
 			let cmAudioFormatDescriptionCreateStatus = CMAudioFormatDescriptionCreate(
 				allocator: nil,
-				asbd: &outputDescription,
+				asbd: &desc,
 				layoutSize: 0,
 				layout: nil,
 				magicCookieSize: 0,
@@ -103,7 +165,7 @@ public class NDIAudioFrame: @unchecked Sendable {
 				formatDescriptionOut: &formatDescription
 			)
 			guard cmAudioFormatDescriptionCreateStatus == noErr else {
-				throw CMAudioFormatDescriptionCreateError(status: status)
+				throw CMAudioFormatDescriptionCreateError(status: cmAudioFormatDescriptionCreateStatus)
 			}
 
 			var presentationTime = CMTime(
@@ -121,12 +183,14 @@ public class NDIAudioFrame: @unchecked Sendable {
 				decodeTimeStamp: .invalid
 			)
 
+			let sampleSizeArray: [Int] = [sampleSize]
+
 			var sampleBuffer: CMSampleBuffer?
 			let sampleBufferStatus = CMSampleBufferCreateReady(
 				allocator: kCFAllocatorDefault,
 				dataBuffer: blockBuffer,
 				formatDescription: formatDescription,
-				sampleCount: .init(ref.no_samples),
+				sampleCount: CMItemCount(numSamples),
 				sampleTimingEntryCount: 1,
 				sampleTimingArray: &timingInfo,
 				sampleSizeEntryCount: 1,
