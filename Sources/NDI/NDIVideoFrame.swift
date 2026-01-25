@@ -10,6 +10,22 @@ public class NDIVideoFrame: @unchecked Sendable {
 		self.ref = ref
 	}
 
+	public var frameRateNumerator: Int32 {
+		ref.frame_rate_N
+	}
+
+	public var frameRateDenominator: Int32 {
+		ref.frame_rate_D
+	}
+
+	public var frameRate: CMTime {
+		CMTime(value: .init(frameRateNumerator), timescale: frameRateDenominator)
+	}
+
+	public var duration: CMTime {
+		CMTime(value: .init(frameRateDenominator), timescale: frameRateNumerator)
+	}
+
 	/// The resolution of this frame.
 	public var resolution: CGSize {
 		.init(width: CGFloat(ref.xres), height: CGFloat(ref.yres))
