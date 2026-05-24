@@ -4,6 +4,27 @@ import Testing
 @testable import NDI
 
 struct NDIMessageParserTests {
+	@Test func recordStartedDerivedValues() throws {
+		let message = try #require(
+			try NDIMessageParser.parse(
+				line: #"<record_started filename="test.mov" filename_pvw="test.mov.preview" frame_rate_n="60000" frame_rate_d="1001" xres="1920" yres="1080"/>"#
+			).recordStarted
+		)
+
+		#expect(message.frameRate == Float(60000) / Float(1001))
+		#expect(message.resolution == CGSize(width: 1920, height: 1080))
+	}
+
+	@Test func recordStartedResolutionRequiresBothDimensions() throws {
+		let message = try #require(
+			try NDIMessageParser.parse(
+				line: #"<record_started filename="test.mov" filename_pvw="test.mov.preview" frame_rate_n="30000" frame_rate_d="1000" xres="1920"/>"#
+			).recordStarted
+		)
+
+		#expect(message.resolution == nil)
+	}
+
 	@Test func parse_record_started() async throws {
 		// given
 		let xml = #"""
@@ -145,5 +166,38 @@ struct NDIMessageParserTests {
 				)
 			)
 		)
+	}
+
+	@Test func parseMissingRequiredAttributeThrows() {
+		let error = #expect(throws: NDIMessageParser.Error.self) {
+			_ = try NDIMessageParser.parse(
+				line: #"<recording no_frames="21" timecode="154139000000" vu_dB="-54.688214"/>"#
+			)
+		}
+
+		guard case .missingAttribute("recording", "real_timecode_inflight") = error else {
+			Issue.record("Unexpected error: \(error)")
+			return
+		}
+	}
+
+	@Test func parseInvalidRequiredAttributeThrows() {
+		let error = #expect(throws: NDIMessageParser.Error.self) {
+			_ = try NDIMessageParser.parse(
+				line: #"<record_stopped no_frames="lots" last_timecode="154471666667"/>"#
+			)
+		}
+
+		guard case .invalidAttributeValue("record_stopped", "no_frames", "lots") = error else {
+			Issue.record("Unexpected error: \(error)")
+			return
+		}
+	}
+}
+
+private extension NDIMessage {
+	var recordStarted: NDIRecordStartedMessage? {
+		guard case let .recordStarted(message) = self else { return nil }
+		return message
 	}
 }
