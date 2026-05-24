@@ -5,7 +5,7 @@ import libNDI
 public class NDIAudioFrame: @unchecked Sendable {
 	fileprivate var ref: NDIlib_audio_frame_v3_t
 
-	fileprivate init(ref: NDIlib_audio_frame_v3_t) {
+	init(ref: NDIlib_audio_frame_v3_t) {
 		self.ref = ref
 	}
 
@@ -60,26 +60,36 @@ public class NDIAudioFrame: @unchecked Sendable {
 				// Planar: [ch1_s1, ch1_s2, ..., ch1_sN, ch2_s1, ch2_s2, ..., ch2_sN]
 				// Interleaved: [ch1_s1, ch2_s1, ch1_s2, ch2_s2, ..., ch1_sN, ch2_sN]
 				let sourceData = UnsafeRawPointer(ref.p_data!).assumingMemoryBound(to: Float32.self)
-				for sampleIndex in 0..<numSamples {
-					for channelIndex in 0..<numChannels {
+				for sampleIndex in 0 ..< numSamples {
+					for channelIndex in 0 ..< numChannels {
 						let sourceIndex = channelIndex * channelStride + sampleIndex
 						let destIndex = sampleIndex * numChannels + channelIndex
 						interleavedData[destIndex] = sourceData[sourceIndex]
 					}
 				}
 
-				var buffer: CMBlockBuffer?
-				let status = CMBlockBufferCreateWithMemoryBlock(
-					allocator: kCFAllocatorDefault,
-					memoryBlock: interleavedData,
-					blockLength: interleavedDataSize,
-					blockAllocator: kCFAllocatorMalloc,
-					customBlockSource: nil,
-					offsetToData: 0,
-					dataLength: interleavedDataSize,
-					flags: 0,
-					blockBufferOut: &buffer
+				var customBlockSource = CMBlockBufferCustomBlockSource(
+					version: 0,
+					AllocateBlock: nil,
+					FreeBlock: { _, memoryBlock, _ in
+						memoryBlock.assumingMemoryBound(to: Float32.self).deallocate()
+					},
+					refCon: nil
 				)
+				var buffer: CMBlockBuffer?
+				let status = withUnsafePointer(to: &customBlockSource) { customBlockSource in
+					CMBlockBufferCreateWithMemoryBlock(
+						allocator: kCFAllocatorDefault,
+						memoryBlock: interleavedData,
+						blockLength: interleavedDataSize,
+						blockAllocator: nil,
+						customBlockSource: customBlockSource,
+						offsetToData: 0,
+						dataLength: interleavedDataSize,
+						flags: 0,
+						blockBufferOut: &buffer
+					)
+				}
 
 				guard status == kCMBlockBufferNoErr, let buffer else {
 					interleavedData.deallocate()
@@ -239,7 +249,7 @@ extension NDIAudioFrame: CustomStringConvertible {
 		let timecode = ref.timecode == NDIlib_send_timecode_synthesize ? "synthesize" : ref.timecode.formatted()
 		let timestamp = ref.timestamp == NDIlib_recv_timestamp_undefined ? "undefined" : ref.timestamp.formatted()
 
-		return "<NDIAudioFrame sample_rate: \(sampleRate), no_channels: \(numberOfChannels), no_samples: \(numberOfSamples), timecode: \(ref.timecode), channel_stride_in_bytes: \(ref.channel_stride_in_bytes), p_metadata: \(metadata ?? ""), timestamp: \(timestamp)>"
+		return "<NDIAudioFrame sample_rate: \(sampleRate), no_channels: \(numberOfChannels), no_samples: \(numberOfSamples), timecode: \(timecode), channel_stride_in_bytes: \(ref.channel_stride_in_bytes), p_metadata: \(metadata ?? ""), timestamp: \(timestamp)>"
 	}
 }
 
