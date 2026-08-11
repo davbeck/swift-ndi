@@ -247,6 +247,44 @@ struct NDIPlayerTests {
 		await probe.stopLoop(at: 0)
 	}
 
+	@Test
+	func registeredStreamReceivesMarkerYieldedImmediatelyWithAnotherSubscriber() async throws {
+		let probe = ReceiveLoopProbe()
+		let player = NDIPlayer(
+			name: "Test",
+			capture: NDIFrameCapture { .none },
+			startReceiveLoop: probe.starter
+		)
+		let existingStream = await player.registeredFrames(bufferingPolicy: .bufferingNewest(1))
+		let stream = await player.registeredFrames(
+			bufferingPolicy: .bufferingNewest(1),
+			including: { frame in
+				if case .marker = frame {
+					return true
+				}
+				return false
+			}
+		)
+
+		let marker = try NDIFrameMarker(id: #require(UUID(uuidString: "99999999-8888-7777-6666-555555555555")))
+		await player.yieldMarker(marker)
+
+		var iterator = stream.makeAsyncIterator()
+		if case let .marker(receivedMarker)? = await iterator.next() {
+			#expect(receivedMarker == marker)
+		} else {
+			Issue.record("Expected the marker yielded immediately after registration")
+		}
+		#expect(await player.activeSubscriptionCount == 2)
+
+		let existingConsumer = consume(existingStream)
+		let consumer = consume(stream)
+		existingConsumer.cancel()
+		consumer.cancel()
+		await existingConsumer.value
+		await consumer.value
+	}
+
 	private func consume(_ stream: NDIPlayer.FrameStream) -> Task<Void, Never> {
 		Task {
 			for await _ in stream {}

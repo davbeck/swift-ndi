@@ -368,6 +368,70 @@ public actor NDIPlayer {
 		including: FrameInclusion?,
 		onDroppedFrame: DroppedFrameHandler?
 	) -> FrameStream {
+		let preparedStream = prepareFrameStream(bufferingPolicy: bufferingPolicy)
+
+		Task { [weak self, token = preparedStream.token] in
+			await self?.registerContinuation(
+				preparedStream.continuation,
+				token: token,
+				onDroppedFrame: onDroppedFrame,
+				including: including
+			)
+		}
+
+		return preparedStream.stream
+	}
+
+	/// Creates a frame stream after registering this specific subscription.
+	///
+	/// A frame or marker yielded after this method returns is visible to this
+	/// subscription, subject to its buffering policy.
+	public func registeredFrames(
+		bufferingPolicy: NDIFrameBufferingPolicy,
+		onDroppedFrame: DroppedFrameHandler? = nil
+	) async -> FrameStream {
+		await makeRegisteredFrameStream(
+			bufferingPolicy: bufferingPolicy,
+			including: nil,
+			onDroppedFrame: onDroppedFrame
+		)
+	}
+
+	/// Creates a filtered frame stream after registering this specific subscription.
+	///
+	/// `including` runs before buffering. A frame or marker included and yielded
+	/// after this method returns is visible to this subscription, subject to its
+	/// buffering policy.
+	public func registeredFrames(
+		bufferingPolicy: NDIFrameBufferingPolicy,
+		including: @escaping FrameInclusion,
+		onDroppedFrame: DroppedFrameHandler? = nil
+	) async -> FrameStream {
+		await makeRegisteredFrameStream(
+			bufferingPolicy: bufferingPolicy,
+			including: including,
+			onDroppedFrame: onDroppedFrame
+		)
+	}
+
+	private func makeRegisteredFrameStream(
+		bufferingPolicy: NDIFrameBufferingPolicy,
+		including: FrameInclusion?,
+		onDroppedFrame: DroppedFrameHandler?
+	) async -> FrameStream {
+		let preparedStream = prepareFrameStream(bufferingPolicy: bufferingPolicy)
+		await registerContinuation(
+			preparedStream.continuation,
+			token: preparedStream.token,
+			onDroppedFrame: onDroppedFrame,
+			including: including
+		)
+		return preparedStream.stream
+	}
+
+	private nonisolated func prepareFrameStream(
+		bufferingPolicy: NDIFrameBufferingPolicy
+	) -> (stream: FrameStream, continuation: FrameStream.Continuation, token: NDIFrameSubscriptionToken) {
 		let token = NDIFrameSubscriptionToken()
 		let (stream, continuation) = FrameStream.makeStream(bufferingPolicy: bufferingPolicy.streamPolicy)
 
@@ -378,16 +442,7 @@ public actor NDIPlayer {
 			}
 		}
 
-		Task { [weak self, token] in
-			await self?.registerContinuation(
-				continuation,
-				token: token,
-				onDroppedFrame: onDroppedFrame,
-				including: including
-			)
-		}
-
-		return stream
+		return (stream, continuation, token)
 	}
 
 	/// Places a marker after frames already delivered to each current subscriber.
@@ -399,6 +454,12 @@ public actor NDIPlayer {
 		broadcast(.marker(marker))
 		return marker
 	}
+
+	/// Provides an actor barrier for frame delivery.
+	///
+	/// After this method returns, drop handlers for frames received or yielded
+	/// before the call have completed.
+	public func synchronizeFrameDelivery() {}
 
 	/// Compatibility overload retaining the original 60-frame default.
 	public nonisolated func frames(bufferingNewest: Int = 60) -> FrameStream {
