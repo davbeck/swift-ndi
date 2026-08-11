@@ -22,6 +22,14 @@ public enum NDIFrameBufferingPolicy: Equatable, Sendable {
 	}
 }
 
+public struct NDIFrameMarker: Equatable, Hashable, Identifiable, Sendable {
+	public let id: UUID
+
+	public init(id: UUID = UUID()) {
+		self.id = id
+	}
+}
+
 struct NDIFrameCapture: Sendable {
 	var capture: @Sendable () -> NDIReceivedFrame
 
@@ -263,8 +271,13 @@ public actor NDIPlayer {
 
 	private func receive(frame: NDIReceivedFrame, from id: UUID) {
 		guard case .running(id, _) = receiveLoopState else { return }
+		broadcast(frame)
+	}
 
+	private func broadcast(_ frame: NDIReceivedFrame) {
 		for subscription in frameSubscriptions.values {
+			guard subscription.including?(frame) ?? true else { continue }
+
 			switch subscription.continuation.yield(frame) {
 			case .enqueued, .terminated:
 				break
@@ -283,10 +296,12 @@ public actor NDIPlayer {
 
 	public typealias FrameStream = AsyncStream<NDIReceivedFrame>
 	public typealias DroppedFrameHandler = @Sendable (NDIReceivedFrame) -> Void
+	public typealias FrameInclusion = @Sendable (NDIReceivedFrame) -> Bool
 
 	private struct FrameSubscription {
 		var continuation: FrameStream.Continuation
 		var onDroppedFrame: DroppedFrameHandler?
+		var including: FrameInclusion?
 	}
 
 	private var frameSubscriptions: [UUID: FrameSubscription] = [:]
@@ -298,13 +313,15 @@ public actor NDIPlayer {
 	private func registerContinuation(
 		_ continuation: FrameStream.Continuation,
 		token: NDIFrameSubscriptionToken,
-		onDroppedFrame: DroppedFrameHandler?
+		onDroppedFrame: DroppedFrameHandler?,
+		including: FrameInclusion?
 	) async {
 		guard !token.isCancelled else { return }
 
 		frameSubscriptions[token.id] = FrameSubscription(
 			continuation: continuation,
-			onDroppedFrame: onDroppedFrame
+			onDroppedFrame: onDroppedFrame,
+			including: including
 		)
 		await reconcileReceiving()
 	}
@@ -322,6 +339,35 @@ public actor NDIPlayer {
 		bufferingPolicy: NDIFrameBufferingPolicy,
 		onDroppedFrame: DroppedFrameHandler? = nil
 	) -> FrameStream {
+		makeFrameStream(
+			bufferingPolicy: bufferingPolicy,
+			including: nil,
+			onDroppedFrame: onDroppedFrame
+		)
+	}
+
+	/// Creates a filtered frame stream with a policy specific to this subscriber.
+	///
+	/// `including` runs before buffering, so excluded frames cannot consume capacity
+	/// or evict an included frame. `including` and `onDroppedFrame` run on the player
+	/// actor and should return quickly.
+	public nonisolated func frames(
+		bufferingPolicy: NDIFrameBufferingPolicy,
+		including: @escaping FrameInclusion,
+		onDroppedFrame: DroppedFrameHandler? = nil
+	) -> FrameStream {
+		makeFrameStream(
+			bufferingPolicy: bufferingPolicy,
+			including: including,
+			onDroppedFrame: onDroppedFrame
+		)
+	}
+
+	private nonisolated func makeFrameStream(
+		bufferingPolicy: NDIFrameBufferingPolicy,
+		including: FrameInclusion?,
+		onDroppedFrame: DroppedFrameHandler?
+	) -> FrameStream {
 		let token = NDIFrameSubscriptionToken()
 		let (stream, continuation) = FrameStream.makeStream(bufferingPolicy: bufferingPolicy.streamPolicy)
 
@@ -336,11 +382,22 @@ public actor NDIPlayer {
 			await self?.registerContinuation(
 				continuation,
 				token: token,
-				onDroppedFrame: onDroppedFrame
+				onDroppedFrame: onDroppedFrame,
+				including: including
 			)
 		}
 
 		return stream
+	}
+
+	/// Places a marker after frames already delivered to each current subscriber.
+	///
+	/// The marker uses each subscriber's normal filtering and buffering policy. If
+	/// it is evicted later, it is delivered to that subscriber's drop handler.
+	@discardableResult
+	public func yieldMarker(_ marker: NDIFrameMarker = NDIFrameMarker()) -> NDIFrameMarker {
+		broadcast(.marker(marker))
+		return marker
 	}
 
 	/// Compatibility overload retaining the original 60-frame default.

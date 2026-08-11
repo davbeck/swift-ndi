@@ -1,5 +1,6 @@
 import ConcurrencyExtras
 import Dependencies
+import Foundation
 import libNDI
 import Synchronization
 import Testing
@@ -61,12 +62,9 @@ struct NDIPlayerTests {
 			startReceiveLoop: probe.starter
 		)
 		let droppedFrameCount = Mutex(0)
-		let stream = player.frames(
-			bufferingPolicy: .bufferingNewest(1),
-			onDroppedFrame: { _ in
-				droppedFrameCount.withLock { $0 += 1 }
-			}
-		)
+		let stream = player.frames(bufferingPolicy: .bufferingNewest(1)) { _ in
+			droppedFrameCount.withLock { $0 += 1 }
+		}
 		#expect(await startEvents.next() == 1)
 
 		await probe.send(.none, toLoopAt: 0)
@@ -123,6 +121,128 @@ struct NDIPlayerTests {
 		secondConsumer.cancel()
 		await firstConsumer.value
 		await secondConsumer.value
+		await Task.megaYield()
+		await probe.stopLoop(at: 0)
+	}
+
+	@Test
+	func filtersFramesBeforeTheyConsumeBufferCapacity() async {
+		let probe = ReceiveLoopProbe()
+		var startEvents = probe.startEvents.makeAsyncIterator()
+		let player = NDIPlayer(
+			name: "Test",
+			capture: NDIFrameCapture { .none },
+			startReceiveLoop: probe.starter
+		)
+		let droppedFrameCount = Mutex(0)
+		let stream = player.frames(
+			bufferingPolicy: .bufferingNewest(1),
+			including: { frame in
+				if case .unknown = frame {
+					return true
+				}
+				return false
+			},
+			onDroppedFrame: { _ in
+				droppedFrameCount.withLock { $0 += 1 }
+			}
+		)
+		#expect(await startEvents.next() == 1)
+
+		await probe.send(.unknown, toLoopAt: 0)
+		await probe.send(.statusChange, toLoopAt: 0)
+
+		#expect(droppedFrameCount.withLock { $0 } == 0)
+		var iterator = stream.makeAsyncIterator()
+		let frame = await iterator.next()
+		if case .unknown? = frame {
+			// Expected: the excluded status did not evict the included frame.
+		} else {
+			Issue.record("An excluded frame consumed subscriber buffer capacity")
+		}
+
+		let consumer = consume(stream)
+		consumer.cancel()
+		await consumer.value
+		await Task.megaYield()
+		await probe.stopLoop(at: 0)
+	}
+
+	@Test
+	func markerIsOrderedWithReceivedFrames() async throws {
+		let probe = ReceiveLoopProbe()
+		var startEvents = probe.startEvents.makeAsyncIterator()
+		let player = NDIPlayer(
+			name: "Test",
+			capture: NDIFrameCapture { .none },
+			startReceiveLoop: probe.starter
+		)
+		let stream = player.frames(bufferingPolicy: .bufferingNewest(3))
+		#expect(await startEvents.next() == 1)
+
+		await probe.send(.statusChange, toLoopAt: 0)
+		let marker = try NDIFrameMarker(id: #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")))
+		#expect(await player.yieldMarker(marker) == marker)
+		await probe.send(.unknown, toLoopAt: 0)
+
+		var iterator = stream.makeAsyncIterator()
+		if case .statusChange? = await iterator.next() {
+			// Expected first frame.
+		} else {
+			Issue.record("Expected the received frame before the marker")
+		}
+		if case let .marker(receivedMarker)? = await iterator.next() {
+			#expect(receivedMarker == marker)
+		} else {
+			Issue.record("Expected the marker between received frames")
+		}
+		if case .unknown? = await iterator.next() {
+			// Expected final frame.
+		} else {
+			Issue.record("Expected the received frame after the marker")
+		}
+
+		let consumer = consume(stream)
+		consumer.cancel()
+		await consumer.value
+		await Task.megaYield()
+		await probe.stopLoop(at: 0)
+	}
+
+	@Test
+	func evictedMarkerIsDeliveredToDropHandler() async throws {
+		let probe = ReceiveLoopProbe()
+		var startEvents = probe.startEvents.makeAsyncIterator()
+		let player = NDIPlayer(
+			name: "Test",
+			capture: NDIFrameCapture { .none },
+			startReceiveLoop: probe.starter
+		)
+		let droppedMarkers = Mutex<[NDIFrameMarker]>([])
+		let stream = player.frames(
+			bufferingPolicy: .bufferingNewest(1),
+			onDroppedFrame: { frame in
+				guard case let .marker(marker) = frame else { return }
+				droppedMarkers.withLock { $0.append(marker) }
+			}
+		)
+		#expect(await startEvents.next() == 1)
+
+		let marker = try NDIFrameMarker(id: #require(UUID(uuidString: "11111111-2222-3333-4444-555555555555")))
+		await player.yieldMarker(marker)
+		await probe.send(.unknown, toLoopAt: 0)
+
+		#expect(droppedMarkers.withLock { $0 } == [marker])
+		var iterator = stream.makeAsyncIterator()
+		if case .unknown? = await iterator.next() {
+			// Expected: the later frame evicted the marker.
+		} else {
+			Issue.record("Expected the newest received frame")
+		}
+
+		let consumer = consume(stream)
+		consumer.cancel()
+		await consumer.value
 		await Task.megaYield()
 		await probe.stopLoop(at: 0)
 	}
