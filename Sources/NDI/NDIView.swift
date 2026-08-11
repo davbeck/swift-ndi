@@ -122,8 +122,9 @@ public class NDIViewCoordinator: NSObject, MTKViewDelegate {
 
 	func play() {
 		playerTask = Task { [weak self, player] in
-			for await frame in player.videoFrames {
-				self?.frame = frame
+			for await frame in player.frames(bufferingPolicy: .lowLatency) {
+				guard case let .video(videoFrame) = frame else { continue }
+				self?.frame = videoFrame
 			}
 		}
 	}

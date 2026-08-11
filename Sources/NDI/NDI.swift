@@ -10,8 +10,6 @@ public struct NDI: Sendable {
 	/// The units that time is represented in (100ns) per second
 	public static let timescale: Int64 = 10_000_000
 
-	// TODO: actually call thses
-
 	var NDIlib_initialize: @Sendable () -> Bool = { false }
 
 	var NDIlib_destroy: @Sendable () -> Void
@@ -49,20 +47,85 @@ public struct NDI: Sendable {
 	var NDIlib_recv_free_metadata: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
 }
 
-public enum NDILoadError: Error, LocalizedError {
+public enum NDILoadError: Error, Equatable, LocalizedError, Sendable {
 	case dlopenFailed(String?)
 	case loadMethodNotFound(String?)
 	case loadFailed
+	case initializationFailed
 
 	public var errorDescription: String? {
-		String(localized: "Failed to load NDI library.")
+		switch self {
+		case let .dlopenFailed(message):
+			if let message {
+				String(localized: "Failed to open the NDI library: \(message)")
+			} else {
+				String(localized: "Failed to open the NDI library.")
+			}
+		case let .loadMethodNotFound(message):
+			if let message {
+				String(localized: "Failed to find the NDI loader: \(message)")
+			} else {
+				String(localized: "Failed to find the NDI loader.")
+			}
+		case .loadFailed:
+			String(localized: "The NDI loader did not return a function table.")
+		case .initializationFailed:
+			String(localized: "The NDI library failed to initialize.")
+		}
 	}
 }
 
+final class NDILibraryRuntime: @unchecked Sendable {
+	private let destroy: @Sendable () -> Void
+	private let close: @Sendable () -> Void
+
+	init(
+		initialize: () -> Bool,
+		destroy: @escaping @Sendable () -> Void,
+		close: @escaping @Sendable () -> Void = {}
+	) throws(NDILoadError) {
+		guard initialize() else {
+			close()
+			throw NDILoadError.initializationFailed
+		}
+
+		self.destroy = destroy
+		self.close = close
+	}
+
+	deinit {
+		destroy()
+		close()
+	}
+}
+
+#if os(macOS)
+	private final class NDIDynamicLibraryHandle: @unchecked Sendable {
+		let rawValue: UnsafeMutableRawPointer
+
+		init(rawValue: UnsafeMutableRawPointer) {
+			self.rawValue = rawValue
+		}
+
+		func close() {
+			dlclose(rawValue)
+		}
+	}
+#endif
+
 public extension NDI {
 	init(_ lib: NDIlib_v5) {
+		self.init(lib, retaining: nil)
+	}
+
+	private init(_ lib: NDIlib_v5, retaining runtime: NDILibraryRuntime?) {
 		self.init(
-			NDIlib_initialize: { lib.NDIlib_initialize() },
+			NDIlib_initialize: { [runtime] in
+				if runtime != nil {
+					return true
+				}
+				return lib.NDIlib_initialize()
+			},
 			NDIlib_destroy: { lib.NDIlib_destroy() },
 
 			NDIlib_find_create_v2: { lib.NDIlib_find_create_v2($0) },
@@ -84,45 +147,80 @@ public extension NDI {
 		init(libraryPath: String) throws(NDILoadError) {
 			typealias LoadFunc = @convention(c) () -> UnsafePointer<NDIlib_v5>?
 
-			guard let handle = dlopen(libraryPath, RTLD_NOW) else {
+			guard let rawHandle = dlopen(libraryPath, RTLD_NOW) else {
 				if let errorMessage = dlerror() {
 					throw NDILoadError.dlopenFailed(String(cString: errorMessage))
 				}
 
 				throw NDILoadError.dlopenFailed(nil)
 			}
-			defer { dlclose(handle) }
-			guard let sym = dlsym(handle, "NDIlib_v5_load") else {
-				if let errorMessage = dlerror() {
-					throw NDILoadError.loadMethodNotFound(String(cString: errorMessage))
-				}
-
-				throw NDILoadError.loadMethodNotFound(nil)
+			let handle = NDIDynamicLibraryHandle(rawValue: rawHandle)
+			guard let sym = dlsym(handle.rawValue, "NDIlib_v5_load") else {
+				let errorMessage = dlerror().map { String(cString: $0) }
+				handle.close()
+				throw NDILoadError.loadMethodNotFound(errorMessage)
 			}
 			let NDIlib_v5_load = unsafeBitCast(sym, to: LoadFunc.self)
 
 			guard let libPointer = NDIlib_v5_load() else {
+				handle.close()
 				throw NDILoadError.loadFailed
 			}
 
-			self.init(libPointer.pointee)
+			let lib = libPointer.pointee
+			let runtime = try NDILibraryRuntime(
+				initialize: { lib.NDIlib_initialize() },
+				destroy: { lib.NDIlib_destroy() },
+				close: { handle.close() }
+			)
+
+			self.init(lib, retaining: runtime)
 		}
 
-		static let shared: NDI? = {
-			do {
+		static let sharedResult: Result<NDI, NDILoadError> = {
+			var lastError = NDILoadError.dlopenFailed(nil)
+			for path in ["libndi.dylib", "/usr/local/lib/libndi.dylib"] {
 				do {
-					return try NDI(libraryPath: "libndi.dylib")
+					return try .success(NDI(libraryPath: path))
 				} catch {
-					return try NDI(libraryPath: "/usr/local/lib/libndi.dylib")
+					let loadError = error as? NDILoadError ?? .loadFailed
+					if loadError == .initializationFailed {
+						return .failure(loadError)
+					}
+					lastError = loadError
 				}
-			} catch {
-				logger.error("Failed to load NDI: \(error)")
-				return nil
 			}
+
+			return .failure(lastError)
 		}()
 	#else
-		static let shared = NDI(NDIlib_v5_load().pointee)
+		static let sharedResult: Result<NDI, NDILoadError> = {
+			guard let libPointer = NDIlib_v5_load() else {
+				return .failure(.loadFailed)
+			}
+
+			let lib = libPointer.pointee
+			do {
+				let runtime = try NDILibraryRuntime(
+					initialize: { lib.NDIlib_initialize() },
+					destroy: { lib.NDIlib_destroy() }
+				)
+				return .success(NDI(lib, retaining: runtime))
+			} catch {
+				return .failure(error as? NDILoadError ?? .initializationFailed)
+			}
+		}()
 	#endif
+
+	static let shared: NDI? = {
+		switch sharedResult {
+		case let .success(ndi):
+			return ndi
+		case let .failure(error):
+			logger.error("Failed to load NDI: \(error)")
+			return nil
+		}
+	}()
 }
 
 extension NDI: DependencyKey {
