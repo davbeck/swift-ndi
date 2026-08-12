@@ -132,4 +132,5 @@ public enum NDIReceivedFrame: Sendable {
 	case metadata(NDIMetadataFrame)
 	case statusChange
 	case unknown
+	case marker(NDIFrameMarker)
 }
