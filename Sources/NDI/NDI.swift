@@ -45,6 +45,18 @@ public struct NDI: Sendable {
 	var NDIlib_recv_free_audio_v3: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_audio_frame_v3_t>?) -> Void
 
 	var NDIlib_recv_free_metadata: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
+
+	// MARK: - SEND
+
+	var NDIlib_send_create: @Sendable (UnsafePointer<NDIlib_send_create_t>?) -> NDIlib_send_instance_t?
+
+	var NDIlib_send_destroy: @Sendable (NDIlib_send_instance_t?) -> Void
+
+	var NDIlib_send_send_video_v2: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_video_frame_v2_t>?) -> Void
+
+	var NDIlib_send_get_no_connections: @Sendable (NDIlib_send_instance_t?, UInt32) -> Int32 = { _, _ in 0 }
+
+	var NDIlib_send_get_source_name: @Sendable (NDIlib_send_instance_t?) -> UnsafePointer<NDIlib_source_t>?
 }
 
 public enum NDILoadError: Error, Equatable, LocalizedError, Sendable {
@@ -139,7 +151,13 @@ public extension NDI {
 			NDIlib_recv_capture_v3: { lib.NDIlib_recv_capture_v3($0, $1, $2, $3, $4) },
 			NDIlib_recv_free_video_v2: { lib.NDIlib_recv_free_video_v2($0, $1) },
 			NDIlib_recv_free_audio_v3: { lib.NDIlib_recv_free_audio_v3($0, $1) },
-			NDIlib_recv_free_metadata: { lib.NDIlib_recv_free_metadata($0, $1) }
+			NDIlib_recv_free_metadata: { lib.NDIlib_recv_free_metadata($0, $1) },
+
+			NDIlib_send_create: { lib.NDIlib_send_create($0) },
+			NDIlib_send_destroy: { lib.NDIlib_send_destroy($0) },
+			NDIlib_send_send_video_v2: { lib.NDIlib_send_send_video_v2($0, $1) },
+			NDIlib_send_get_no_connections: { lib.NDIlib_send_get_no_connections($0, $1) },
+			NDIlib_send_get_source_name: { lib.NDIlib_send_get_source_name($0) }
 		)
 	}
 
