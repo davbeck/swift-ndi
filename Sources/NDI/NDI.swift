@@ -54,8 +54,6 @@ public struct NDI: Sendable {
 
 	var NDIlib_send_send_video_v2: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_video_frame_v2_t>?) -> Void
 
-	var NDIlib_send_send_audio_v2: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_audio_frame_v2_t>?) -> Void
-
 	var NDIlib_send_send_audio_v3: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_audio_frame_v3_t>?) -> Void
 
 	var NDIlib_send_send_metadata: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
@@ -174,7 +172,6 @@ public extension NDI {
 			NDIlib_send_create: { lib.NDIlib_send_create($0) },
 			NDIlib_send_destroy: { lib.NDIlib_send_destroy($0) },
 			NDIlib_send_send_video_v2: { lib.NDIlib_send_send_video_v2($0, $1) },
-			NDIlib_send_send_audio_v2: { lib.NDIlib_send_send_audio_v2($0, $1) },
 			NDIlib_send_send_audio_v3: { lib.NDIlib_send_send_audio_v3($0, $1) },
 			NDIlib_send_send_metadata: { lib.NDIlib_send_send_metadata($0, $1) },
 			NDIlib_send_capture: { lib.NDIlib_send_capture($0, $1, $2) },

@@ -39,8 +39,8 @@ struct NDISenderTests {
 		#expect(sender.connectionCount() == 3)
 	}
 
-	@Test(arguments: [NDISendAudioFrame.Version.v2, .v3])
-	func sendsPlanarAudio(version: NDISendAudioFrame.Version) throws {
+	@Test
+	func sendsPlanarAudio() throws {
 		let probe = SenderProbe()
 		let sender = try #require(NDISender(name: "swift-ndi sender test", ndi: probe.ndi))
 		let frame = try NDISendAudioFrame(
@@ -50,9 +50,9 @@ struct NDISenderTests {
 			metadata: "<audio/>"
 		)
 
-		sender.send(frame, version: version)
+		sender.send(frame)
 
-		let snapshot = try #require(version == .v2 ? probe.audioV2 : probe.audioV3)
+		let snapshot = try #require(probe.audio)
 		#expect(snapshot.sampleRate == 48000)
 		#expect(snapshot.numberOfChannels == 2)
 		#expect(snapshot.numberOfSamples == 3)
@@ -185,8 +185,7 @@ private final class SenderProbe: @unchecked Sendable {
 		var sendCount = 0
 		var connectionCount = 0
 		var receivedVideoBuffer = false
-		var audioV2: AudioSnapshot?
-		var audioV3: AudioSnapshot?
+		var audio: AudioSnapshot?
 		var sentMetadata: [String] = []
 		var sentMetadataTimecodes: [Int64] = []
 		var connectionMetadata: [String] = []
@@ -219,8 +218,7 @@ private final class SenderProbe: @unchecked Sendable {
 	var destroyCount: Int { state.withLock(\.destroyCount) }
 	var sendCount: Int { state.withLock(\.sendCount) }
 	var receivedVideoBuffer: Bool { state.withLock(\.receivedVideoBuffer) }
-	var audioV2: AudioSnapshot? { state.withLock(\.audioV2) }
-	var audioV3: AudioSnapshot? { state.withLock(\.audioV3) }
+	var audio: AudioSnapshot? { state.withLock(\.audio) }
 	var sentMetadata: [String] { state.withLock(\.sentMetadata) }
 	var sentMetadataTimecodes: [Int64] { state.withLock(\.sentMetadataTimecodes) }
 	var connectionMetadata: [String] { state.withLock(\.connectionMetadata) }
@@ -268,13 +266,9 @@ private final class SenderProbe: @unchecked Sendable {
 				state.receivedVideoBuffer = frame?.pointee.p_data != nil
 			}
 		}
-		ndi.NDIlib_send_send_audio_v2 = { [probe] _, frame in
-			guard let frame else { return }
-			probe.state.withLock { $0.audioV2 = Self.snapshot(frame.pointee) }
-		}
 		ndi.NDIlib_send_send_audio_v3 = { [probe] _, frame in
 			guard let frame else { return }
-			probe.state.withLock { $0.audioV3 = Self.snapshot(frame.pointee) }
+			probe.state.withLock { $0.audio = Self.snapshot(frame.pointee) }
 		}
 		ndi.NDIlib_send_send_metadata = { [probe] _, frame in
 			guard let frame else { return }
@@ -329,18 +323,6 @@ private final class SenderProbe: @unchecked Sendable {
 		}
 		ndi.NDIlib_send_get_source_name = { [probe] _ in UnsafePointer(probe.source) }
 		return ndi
-	}
-
-	private static func snapshot(_ frame: NDIlib_audio_frame_v2_t) -> AudioSnapshot {
-		let count = Int(frame.no_channels * frame.no_samples)
-		return AudioSnapshot(
-			sampleRate: frame.sample_rate,
-			numberOfChannels: frame.no_channels,
-			numberOfSamples: frame.no_samples,
-			timecode: frame.timecode,
-			metadata: frame.p_metadata.map(String.init(cString:)),
-			samples: frame.p_data.map { Array(UnsafeBufferPointer(start: $0, count: count)) } ?? []
-		)
 	}
 
 	private static func snapshot(_ frame: NDIlib_audio_frame_v3_t) -> AudioSnapshot {

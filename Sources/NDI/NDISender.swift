@@ -93,11 +93,6 @@ public enum NDISendAudioFrameError: Error, Equatable, Sendable {
 
 /// Planar, 32-bit floating-point audio that remains alive until a synchronous NDI send completes.
 public struct NDISendAudioFrame: Sendable {
-	public enum Version: Equatable, Sendable {
-		case v2
-		case v3
-	}
-
 	public let sampleRate: Int
 	public let numberOfChannels: Int
 	public let numberOfSamples: Int
@@ -136,25 +131,7 @@ public struct NDISendAudioFrame: Sendable {
 		samples = planarSamples.flatMap { $0 }
 	}
 
-	fileprivate func withNDIV2Frame<R>(_ operation: (UnsafePointer<NDIlib_audio_frame_v2_t>) -> R) -> R {
-		samples.withUnsafeBufferPointer { samples in
-			withMetadataCString { metadata in
-				var frame = NDIlib_audio_frame_v2_t(
-					sample_rate: Int32(sampleRate),
-					no_channels: Int32(numberOfChannels),
-					no_samples: Int32(numberOfSamples),
-					timecode: timecode.rawValue,
-					p_data: samples.baseAddress.map(UnsafeMutablePointer.init(mutating:)),
-					channel_stride_in_bytes: Int32(numberOfSamples * MemoryLayout<Float>.stride),
-					p_metadata: metadata,
-					timestamp: 0
-				)
-				return withUnsafePointer(to: &frame, operation)
-			}
-		}
-	}
-
-	fileprivate func withNDIV3Frame<R>(_ operation: (UnsafePointer<NDIlib_audio_frame_v3_t>) -> R) -> R {
+	fileprivate func withNDIFrame<R>(_ operation: (UnsafePointer<NDIlib_audio_frame_v3_t>) -> R) -> R {
 		samples.withUnsafeBufferPointer { samples in
 			withMetadataCString { metadata in
 				var frame = NDIlib_audio_frame_v3_t(
@@ -308,13 +285,8 @@ public final class NDISender: @unchecked Sendable {
 	}
 
 	/// Adds a planar floating-point audio frame synchronously.
-	public func send(_ frame: NDISendAudioFrame, version: NDISendAudioFrame.Version = .v3) {
-		switch version {
-		case .v2:
-			frame.withNDIV2Frame { ndi.NDIlib_send_send_audio_v2(sender, $0) }
-		case .v3:
-			frame.withNDIV3Frame { ndi.NDIlib_send_send_audio_v3(sender, $0) }
-		}
+	public func send(_ frame: NDISendAudioFrame) {
+		frame.withNDIFrame { ndi.NDIlib_send_send_audio_v3(sender, $0) }
 	}
 
 	/// Sends metadata to all connected receivers.

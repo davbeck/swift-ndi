@@ -1,6 +1,5 @@
 import CoreGraphics
 import CoreMedia
-import NDI
 
 nonisolated struct SignalConfiguration: Equatable, Sendable {
 	var sourceName = "Signal Generator"
@@ -10,7 +9,6 @@ nonisolated struct SignalConfiguration: Equatable, Sendable {
 	var showSourceName = true
 	var showSignalDetails = true
 	var sendsAudio = true
-	var audioVersion = SignalAudioVersion.v3
 	var audioChannels = SignalAudioChannels.stereo
 	var audioSampleRate = SignalAudioSampleRate.hz48000
 	var toneFrequency = 440.0
@@ -106,20 +104,6 @@ nonisolated enum SignalPattern: String, CaseIterable, Identifiable, Sendable {
 	case checkerboard = "Checkerboard"
 
 	var id: Self { self }
-}
-
-nonisolated enum SignalAudioVersion: String, CaseIterable, Identifiable, Sendable {
-	case v2 = "Audio v2"
-	case v3 = "Audio v3"
-
-	var id: Self { self }
-
-	var ndiVersion: NDISendAudioFrame.Version {
-		switch self {
-		case .v2: .v2
-		case .v3: .v3
-		}
-	}
 }
 
 nonisolated enum SignalAudioChannels: String, CaseIterable, Identifiable, Sendable {

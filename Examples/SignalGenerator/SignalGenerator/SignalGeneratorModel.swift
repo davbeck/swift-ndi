@@ -95,7 +95,7 @@ final class SignalGeneratorModel {
 
 					if configuration.sendsAudio {
 						let audioFrame = try audioGenerator.makeFrame(configuration: configuration, timecode: timecode)
-						sender.send(audioFrame, version: configuration.audioVersion.ndiVersion)
+						sender.send(audioFrame)
 						audioSamplesSent += audioFrame.numberOfSamples
 					}
 

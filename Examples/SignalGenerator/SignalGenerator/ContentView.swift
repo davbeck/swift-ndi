@@ -126,11 +126,6 @@ private struct SignalInspector: View {
 			Section("Audio") {
 				Toggle("Send Sine Tone", isOn: $model.configuration.sendsAudio)
 				Group {
-					Picker("API", selection: $model.configuration.audioVersion) {
-						ForEach(SignalAudioVersion.allCases) { version in
-							Text(version.rawValue).tag(version)
-						}
-					}
 					Picker("Channels", selection: $model.configuration.audioChannels) {
 						ForEach(SignalAudioChannels.allCases) { channels in
 							Text(channels.rawValue).tag(channels)
