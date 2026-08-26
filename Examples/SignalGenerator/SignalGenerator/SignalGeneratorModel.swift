@@ -12,6 +12,10 @@ final class SignalGeneratorModel {
 	private(set) var frameLabel = "— / —"
 	private(set) var connectionCount = 0
 	private(set) var status = "Ready"
+	private(set) var tally = NDISenderTally(isOnProgram: false, isOnPreview: false)
+	private(set) var lastReceivedMetadata: String?
+	private(set) var audioSamplesSent = 0
+	private(set) var metadataFramesSent = 0
 
 	private var sendTask: Task<Void, Never>?
 	private var generation: UUID?
@@ -44,6 +48,22 @@ final class SignalGeneratorModel {
 			var deadline = clock.now
 			var second = Int(Date().timeIntervalSince1970)
 			var frameInSecond = 0
+			var audioGenerator = SignalAudioGenerator()
+			var audioSamplesSent = 0
+			var metadataFramesSent = 0
+			var lastMetadataSecond: Int?
+			var tally = NDISenderTally(isOnProgram: false, isOnPreview: false)
+			var lastReceivedMetadata: String?
+
+			sender.clearConnectionMetadata()
+			if configuration.sendsConnectionMetadata {
+				sender.addConnectionMetadata(.init(value: configuration.connectionMetadata))
+			}
+			if configuration.usesFailover {
+				sender.setFailoverSource(.init(name: configuration.failoverName, url: configuration.failoverURL))
+			} else {
+				sender.setFailoverSource(nil)
+			}
 
 			await self?.setStatus(
 				"Sending as \(sender.sourceName() ?? configuration.sourceName)",
@@ -59,6 +79,7 @@ final class SignalGeneratorModel {
 						frameInSecond = 0
 					}
 					frameInSecond += 1
+					let timecode = NDITimecode.now
 
 					let rendered = try SignalFrameRenderer.render(
 						configuration: configuration,
@@ -67,9 +88,29 @@ final class SignalGeneratorModel {
 					)
 					let frame = try NDISendVideoFrame(
 						pixelBuffer: rendered.pixelBuffer,
-						frameRate: configuration.frameRate.mediaTime
+						frameRate: configuration.frameRate.mediaTime,
+						timecode: timecode
 					)
 					try sender.send(frame)
+
+					if configuration.sendsAudio {
+						let audioFrame = try audioGenerator.makeFrame(configuration: configuration, timecode: timecode)
+						sender.send(audioFrame, version: configuration.audioVersion.ndiVersion)
+						audioSamplesSent += audioFrame.numberOfSamples
+					}
+
+					if configuration.sendsMetadata, lastMetadataSecond != currentSecond {
+						sender.send(.init(value: configuration.metadata, timecode: timecode))
+						metadataFramesSent += 1
+						lastMetadataSecond = currentSecond
+					}
+
+					if let tallyUpdate = sender.tally() {
+						tally = tallyUpdate
+					}
+					if case let .metadata(metadata) = sender.capture() {
+						lastReceivedMetadata = metadata.value
+					}
 
 					let label = "\(frameInSecond) / \(configuration.frameRate.counterLabel)"
 					let connections = sender.connectionCount()
@@ -77,6 +118,10 @@ final class SignalGeneratorModel {
 						preview: rendered.image,
 						frameLabel: label,
 						connections: connections,
+						tally: tally,
+						lastReceivedMetadata: lastReceivedMetadata,
+						audioSamplesSent: audioSamplesSent,
+						metadataFramesSent: metadataFramesSent,
 						generation: generation
 					)
 
@@ -100,6 +145,7 @@ final class SignalGeneratorModel {
 		generation = nil
 		isSending = false
 		connectionCount = 0
+		tally = NDISenderTally(isOnProgram: false, isOnPreview: false)
 		status = "Stopped"
 	}
 
@@ -111,11 +157,24 @@ final class SignalGeneratorModel {
 		launch(configuration: configuration, after: previousTask)
 	}
 
-	private func didSend(preview: CGImage, frameLabel: String, connections: Int, generation: UUID) {
+	private func didSend(
+		preview: CGImage,
+		frameLabel: String,
+		connections: Int,
+		tally: NDISenderTally,
+		lastReceivedMetadata: String?,
+		audioSamplesSent: Int,
+		metadataFramesSent: Int,
+		generation: UUID
+	) {
 		guard self.generation == generation else { return }
 		self.preview = preview
 		self.frameLabel = frameLabel
 		connectionCount = connections
+		self.tally = tally
+		self.lastReceivedMetadata = lastReceivedMetadata
+		self.audioSamplesSent = audioSamplesSent
+		self.metadataFramesSent = metadataFramesSent
 	}
 
 	private func setStatus(_ status: String, generation: UUID) {
@@ -129,6 +188,7 @@ final class SignalGeneratorModel {
 		self.generation = nil
 		isSending = false
 		connectionCount = 0
+		tally = NDISenderTally(isOnProgram: false, isOnPreview: false)
 		self.status = status
 	}
 }

@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreMedia
+import NDI
 
 nonisolated struct SignalConfiguration: Equatable, Sendable {
 	var sourceName = "Signal Generator"
@@ -8,6 +9,19 @@ nonisolated struct SignalConfiguration: Equatable, Sendable {
 	var pattern = SignalPattern.colorBars
 	var showSourceName = true
 	var showSignalDetails = true
+	var sendsAudio = true
+	var audioVersion = SignalAudioVersion.v3
+	var audioChannels = SignalAudioChannels.stereo
+	var audioSampleRate = SignalAudioSampleRate.hz48000
+	var toneFrequency = 440.0
+	var toneLevel = -20.0
+	var sendsMetadata = true
+	var metadata = #"<signal_generator event="heartbeat"/>"#
+	var sendsConnectionMetadata = true
+	var connectionMetadata = #"<ndi_product long_name="swift-ndi Signal Generator" short_name="Signal Generator" manufacturer="swift-ndi" version="1.0" session="default" model_name="SignalGenerator" serial=""/>"#
+	var usesFailover = false
+	var failoverName = ""
+	var failoverURL = ""
 }
 
 nonisolated enum SignalResolution: String, CaseIterable, Identifiable, Sendable {
@@ -92,4 +106,48 @@ nonisolated enum SignalPattern: String, CaseIterable, Identifiable, Sendable {
 	case checkerboard = "Checkerboard"
 
 	var id: Self { self }
+}
+
+nonisolated enum SignalAudioVersion: String, CaseIterable, Identifiable, Sendable {
+	case v2 = "Audio v2"
+	case v3 = "Audio v3"
+
+	var id: Self { self }
+
+	var ndiVersion: NDISendAudioFrame.Version {
+		switch self {
+		case .v2: .v2
+		case .v3: .v3
+		}
+	}
+}
+
+nonisolated enum SignalAudioChannels: String, CaseIterable, Identifiable, Sendable {
+	case mono = "Mono"
+	case stereo = "Stereo"
+
+	var id: Self { self }
+
+	var count: Int {
+		switch self {
+		case .mono: 1
+		case .stereo: 2
+		}
+	}
+}
+
+nonisolated enum SignalAudioSampleRate: String, CaseIterable, Identifiable, Sendable {
+	case hz44100 = "44.1 kHz"
+	case hz48000 = "48 kHz"
+	case hz96000 = "96 kHz"
+
+	var id: Self { self }
+
+	var value: Int {
+		switch self {
+		case .hz44100: 44100
+		case .hz48000: 48000
+		case .hz96000: 96000
+		}
+	}
 }

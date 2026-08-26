@@ -1,3 +1,4 @@
+import NDI
 import SwiftUI
 
 struct ContentView: View {
@@ -70,6 +71,13 @@ struct ContentView: View {
 			Text(model.frameLabel)
 				.monospacedDigit()
 			Divider().frame(height: 12)
+			if model.tally.isOnProgram {
+				Label("Program", systemImage: "circle.fill")
+					.foregroundStyle(.red)
+			} else if model.tally.isOnPreview {
+				Label("Preview", systemImage: "circle.fill")
+					.foregroundStyle(.green)
+			}
 			Label("\(model.connectionCount)", systemImage: "display.2")
 				.help("Connected NDI receivers")
 		}
@@ -113,6 +121,69 @@ private struct SignalInspector: View {
 				}
 				Toggle("Show Source Name", isOn: $model.configuration.showSourceName)
 				Toggle("Show Signal Details", isOn: $model.configuration.showSignalDetails)
+			}
+
+			Section("Audio") {
+				Toggle("Send Sine Tone", isOn: $model.configuration.sendsAudio)
+				Group {
+					Picker("API", selection: $model.configuration.audioVersion) {
+						ForEach(SignalAudioVersion.allCases) { version in
+							Text(version.rawValue).tag(version)
+						}
+					}
+					Picker("Channels", selection: $model.configuration.audioChannels) {
+						ForEach(SignalAudioChannels.allCases) { channels in
+							Text(channels.rawValue).tag(channels)
+						}
+					}
+					Picker("Sample Rate", selection: $model.configuration.audioSampleRate) {
+						ForEach(SignalAudioSampleRate.allCases) { sampleRate in
+							Text(sampleRate.rawValue).tag(sampleRate)
+						}
+					}
+					Stepper(value: $model.configuration.toneFrequency, in: 100 ... 2000, step: 10) {
+						LabeledContent("Frequency", value: "\(model.configuration.toneFrequency.formatted()) Hz")
+					}
+					Stepper(value: $model.configuration.toneLevel, in: -60 ... 0, step: 1) {
+						LabeledContent("Level", value: "\(model.configuration.toneLevel.formatted()) dB")
+					}
+				}
+				.disabled(!model.configuration.sendsAudio)
+			}
+
+			Section("Metadata") {
+				Toggle("Send Every Second", isOn: $model.configuration.sendsMetadata)
+				TextField("Frame XML", text: $model.configuration.metadata, axis: .vertical)
+					.lineLimit(2 ... 4)
+					.disabled(!model.configuration.sendsMetadata)
+				Toggle("Send On Connection", isOn: $model.configuration.sendsConnectionMetadata)
+				TextField("Connection XML", text: $model.configuration.connectionMetadata, axis: .vertical)
+					.lineLimit(2 ... 4)
+					.disabled(!model.configuration.sendsConnectionMetadata)
+			}
+
+			Section("Failover") {
+				Toggle("Use Failover Source", isOn: $model.configuration.usesFailover)
+				Group {
+					TextField("Name", text: $model.configuration.failoverName)
+					TextField("URL", text: $model.configuration.failoverURL)
+				}
+				.disabled(!model.configuration.usesFailover)
+			}
+
+			Section("Receiver Feedback") {
+				LabeledContent("Connections", value: "\(model.connectionCount)")
+				LabeledContent("Program", value: model.tally.isOnProgram ? "On" : "Off")
+				LabeledContent("Preview", value: model.tally.isOnPreview ? "On" : "Off")
+				LabeledContent("Audio Samples", value: model.audioSamplesSent.formatted())
+				LabeledContent("Metadata Frames", value: model.metadataFramesSent.formatted())
+				if let metadata = model.lastReceivedMetadata {
+					LabeledContent("Received Metadata") {
+						Text(metadata)
+							.font(.caption)
+							.textSelection(.enabled)
+					}
+				}
 			}
 		}
 		.formStyle(.grouped)
