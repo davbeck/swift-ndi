@@ -2,6 +2,7 @@
 	import Foundation
 	import IssueReporting
 	import OSLog
+	import Subprocess
 
 	private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "NDIRecorder")
 
@@ -9,10 +10,7 @@
 	///
 	/// You will need to have access to the NDI recording executable at runtime. When the NDI SDK is installed, this is located at `/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.Recording`.
 	public final class NDIRecorder {
-		let process = Process()
-		let standardOutput = Pipe()
-		let standardError = Pipe()
-		let standardInput = Pipe()
+		private var commandContinuation: AsyncStream<Command>.Continuation?
 
 		public let inputName: String
 
@@ -36,14 +34,9 @@
 			writeThumbnail: Bool = true,
 			autostart: Bool = true,
 			autochop: Bool = true
-		) throws -> MessageStream {
+		) async throws -> MessageStream {
 			let inputName = self.inputName
-
-			process.standardOutput = standardOutput
-			process.standardError = standardError
-			process.standardInput = standardInput
-
-			process.executableURL = executableURL
+			let executablePath = executableURL.path(percentEncoded: false)
 
 //			/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.Recording -i "MEVO-N648P (MEVO-N648P)" -o Test/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.DirectoryService
 
@@ -75,69 +68,120 @@
 			if !autostart {
 				arguments.append("-noautostart")
 			}
+			let processArguments = arguments
 
-			process.arguments = arguments
 			logger.info("starting recording of '\(inputName)' at '\(outputPath)'")
 
-			try process.run()
+			let (messageStream, messageContinuation) = AsyncThrowingStream.makeStream(of: NDIMessage.self)
+			let (commands, commandContinuation) = AsyncStream.makeStream(of: Command.self)
+			self.commandContinuation = commandContinuation
 
-			Task { [standardError] in
-				for try await line in standardError.fileHandleForReading.bytes.lines {
-					logger.info("\(line)")
+			try await withCheckedThrowingContinuation { continuation in
+				let launchSignal = LaunchSignal(continuation: continuation)
+				Task {
+					do {
+						_ = try await run(
+							.path(.init(executablePath)),
+							arguments: .init(processArguments),
+							input: .inputWriter,
+							output: .sequence,
+							error: .sequence
+						) { execution in
+							await launchSignal.succeed()
+
+							try await withThrowingTaskGroup(of: Void.self) { group in
+								group.addTask {
+									defer { commandContinuation.finish() }
+									for try await line in execution.standardOutput.strings() {
+										do {
+											messageContinuation.yield(try NDIMessageParser.parse(line: line))
+										} catch {
+											logger.error("failed to decode message '\(line)': \(error)")
+										}
+									}
+								}
+								group.addTask {
+									for try await line in execution.standardError.strings() {
+										logger.info("\(line)")
+									}
+								}
+								group.addTask {
+									for await command in commands {
+										do {
+											_ = try await execution.standardInputWriter.write(command.value)
+											command.acknowledgement.resume()
+										} catch {
+											command.acknowledgement.resume(throwing: error)
+											throw error
+										}
+									}
+									try await execution.standardInputWriter.finish()
+								}
+								try await group.waitForAll()
+							}
+						}
+						messageContinuation.finish()
+					} catch {
+						await launchSignal.fail(with: error)
+						commandContinuation.finish()
+						messageContinuation.finish(throwing: error)
+					}
 				}
 			}
 
-			let stream = standardOutput.fileHandleForReading.bytes.lines
-				.compactMap { line in
-					do {
-						return try NDIMessageParser.parse(line: line)
-					} catch {
-						logger.error("failed to decode message '\(line)': \(error)")
-						return nil
-					}
-				}
-
-			return MessageStream(underlyingStream: stream)
+			return MessageStream(underlyingStream: messageStream)
 		}
 
 		/// Start recording at this moment; this is used in conjunction with the “-noautostart” command line.
-		public func start() throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<start/>\n".utf8))
+		public func start() async throws {
+			try await send("<start/>\n")
 		}
 
 		/// This will cancel recording and exit the moment that the file is completely on disk.
-		public func stop() throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<exit/>\n".utf8))
+		public func stop() async throws {
+			try await send("<exit/>\n")
 		}
 
 		/// Immediately stop recording, then restart another file without dropping frames.
-		public func chop(filename: String? = nil) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<record_chop/>\n".utf8))
+		public func chop(filename: String? = nil) async throws {
+			try await send("<record_chop/>\n")
 		}
 
 		/// Immediately stop recording, and start recording another file in potentially a different location without dropping frames. This allows a recording location to be changed on the fly, allowing you to span recordings across multiple drives or locations.
-		public func chop(filename: String) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_chop filename="\#(filename)"/>\n"#.utf8))
+		public func chop(filename: String) async throws {
+			try await send(#"<record_chop filename="\#(filename)"/>\n"#)
 		}
 
 		/// This allows you to control the current recorded audio levels in decibels. 1.2 would apply 1.2 dB of gain to the audio signal while recording to disk.
-		public func setRecordLevelGain(_ gain: Float) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_level gain="\#(gain)"/>\n"#.utf8))
+		public func setRecordLevelGain(_ gain: Float) async throws {
+			try await send(#"<record_level gain="\#(gain)"/>\n"#)
 		}
 
 		/// Enable (or disable) automatic gain control for audio, which will use an expander/compressor to normalize the audio while it is being recorded.
-		public func setAutomaticGainControl(_ isOn: Bool) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_agc enabled="\#(isOn)"/>\n"#.utf8))
+		public func setAutomaticGainControl(_ isOn: Bool) async throws {
+			try await send(#"<record_agc enabled="\#(isOn)"/>\n"#)
+		}
+
+		private func send(_ value: String) async throws {
+			guard let commandContinuation else {
+				throw RecorderError.notRunning
+			}
+
+			try await withCheckedThrowingContinuation { acknowledgement in
+				let command = Command(value: value, acknowledgement: acknowledgement)
+				switch commandContinuation.yield(command) {
+				case .enqueued:
+					break
+				case .dropped, .terminated:
+					acknowledgement.resume(throwing: RecorderError.notRunning)
+				@unknown default:
+					acknowledgement.resume(throwing: RecorderError.notRunning)
+				}
+			}
 		}
 
 		public struct MessageStream: AsyncSequence {
-			typealias UnderlyingStream = AsyncCompactMapSequence<AsyncLineSequence<FileHandle.AsyncBytes>, NDIMessage>
+			typealias UnderlyingStream = AsyncThrowingStream<NDIMessage, any Error>
 
 			fileprivate let underlyingStream: UnderlyingStream
 
@@ -168,6 +212,33 @@
 					try await underlyingIterator.next(isolation: actor)
 				}
 			}
+		}
+
+		private struct Command: Sendable {
+			let value: String
+			let acknowledgement: CheckedContinuation<Void, any Error>
+		}
+
+		private enum RecorderError: Error {
+			case notRunning
+		}
+	}
+
+	private actor LaunchSignal {
+		private var continuation: CheckedContinuation<Void, any Error>?
+
+		init(continuation: CheckedContinuation<Void, any Error>) {
+			self.continuation = continuation
+		}
+
+		func succeed() {
+			continuation?.resume()
+			continuation = nil
+		}
+
+		func fail(with error: any Error) {
+			continuation?.resume(throwing: error)
+			continuation = nil
 		}
 	}
 #endif
