@@ -10,8 +10,6 @@
 	///
 	/// You will need to have access to the NDI recording executable at runtime. When the NDI SDK is installed, this is located at `/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.Recording`.
 	public final class NDIRecorder {
-		private var commandContinuation: AsyncStream<Command>.Continuation?
-
 		public let inputName: String
 
 		public let executableURL: URL
@@ -26,15 +24,18 @@
 		}
 
 		/// Connect to the NDI source and prepare to record.
+		/// The recording and its message stream are valid only for the duration of `body`.
 		/// - Parameters:
 		///   - writeThumbnail: Whether a proxy file should be written.
-		///   - autostart: This command may be used to achieve frame-accurate recording as needed. When specified, the record application will run and connect to the remote source; however, it will not immediately start recording. It will then start immediately when you call ``start()``.
+		///   - autostart: This command may be used to achieve frame-accurate recording as needed. When specified, the record application will run and connect to the remote source; however, it will not immediately start recording. It will then start immediately when you call ``Recording/start()``.
 		///   - autochop: This specifies that if the video properties change (resolution, framerate, aspect ratio), the existing file is chopped, and a new one starts with a number appended. When false, it will simply exit when the video properties change, allowing you to start it again with a new file name should you want. By default, if the video format changes, it will open a new file in that format without dropping any frames.
-		@discardableResult public func launch(
+		///   - body: An asynchronous operation that controls the recording and consumes its messages.
+		public func launch<Result: Sendable>(
 			writeThumbnail: Bool = true,
 			autostart: Bool = true,
-			autochop: Bool = true
-		) async throws -> MessageStream {
+			autochop: Bool = true,
+			body: (Recording) async throws -> Result
+		) async throws -> Result {
 			let inputName = self.inputName
 			let executablePath = executableURL.path(percentEncoded: false)
 
@@ -68,120 +69,85 @@
 			if !autostart {
 				arguments.append("-noautostart")
 			}
-			let processArguments = arguments
-
 			logger.info("starting recording of '\(inputName)' at '\(outputPath)'")
 
-			let (messageStream, messageContinuation) = AsyncThrowingStream.makeStream(of: NDIMessage.self)
-			let (commands, commandContinuation) = AsyncStream.makeStream(of: Command.self)
-			self.commandContinuation = commandContinuation
-
-			try await withCheckedThrowingContinuation { continuation in
-				let launchSignal = LaunchSignal(continuation: continuation)
-				Task {
-					do {
-						_ = try await run(
-							.path(.init(executablePath)),
-							arguments: .init(processArguments),
-							input: .inputWriter,
-							output: .sequence,
-							error: .sequence
-						) { execution in
-							await launchSignal.succeed()
-
-							try await withThrowingTaskGroup(of: Void.self) { group in
-								group.addTask {
-									defer { commandContinuation.finish() }
-									for try await line in execution.standardOutput.strings() {
-										do {
-											messageContinuation.yield(try NDIMessageParser.parse(line: line))
-										} catch {
-											logger.error("failed to decode message '\(line)': \(error)")
-										}
-									}
-								}
-								group.addTask {
-									for try await line in execution.standardError.strings() {
-										logger.info("\(line)")
-									}
-								}
-								group.addTask {
-									for await command in commands {
-										do {
-											_ = try await execution.standardInputWriter.write(command.value)
-											command.acknowledgement.resume()
-										} catch {
-											command.acknowledgement.resume(throwing: error)
-											throw error
-										}
-									}
-									try await execution.standardInputWriter.finish()
-								}
-								try await group.waitForAll()
-							}
-						}
-						messageContinuation.finish()
-					} catch {
-						await launchSignal.fail(with: error)
-						commandContinuation.finish()
-						messageContinuation.finish(throwing: error)
+			let executionResult = try await run(
+				.path(.init(executablePath)),
+				arguments: .init(arguments),
+				input: .inputWriter,
+				output: .sequence,
+				error: .sequence
+			) { execution in
+				async let logStandardError: Void = {
+					for try await line in execution.standardError.strings() {
+						logger.info("\(line)")
 					}
-				}
+				}()
+
+				let messages = execution.standardOutput.strings()
+					.compactMap { line in
+						do {
+							return try NDIMessageParser.parse(line: line)
+						} catch {
+							logger.error("failed to decode message '\(line)': \(error)")
+							return nil
+						}
+					}
+				let recording = Recording(
+					messages: MessageStream(underlyingStream: messages),
+					standardInputWriter: execution.standardInputWriter
+				)
+				let result = try await body(recording)
+				try await execution.standardInputWriter.finish()
+				try await logStandardError
+				return result
 			}
 
-			return MessageStream(underlyingStream: messageStream)
+			return executionResult.closureResult
 		}
 
-		/// Start recording at this moment; this is used in conjunction with the “-noautostart” command line.
-		public func start() async throws {
-			try await send("<start/>\n")
-		}
+		/// A scoped interface to a running NDI recording process.
+		public struct Recording {
+			public let messages: MessageStream
 
-		/// This will cancel recording and exit the moment that the file is completely on disk.
-		public func stop() async throws {
-			try await send("<exit/>\n")
-		}
+			fileprivate let standardInputWriter: StandardInputWriter
 
-		/// Immediately stop recording, then restart another file without dropping frames.
-		public func chop(filename: String? = nil) async throws {
-			try await send("<record_chop/>\n")
-		}
-
-		/// Immediately stop recording, and start recording another file in potentially a different location without dropping frames. This allows a recording location to be changed on the fly, allowing you to span recordings across multiple drives or locations.
-		public func chop(filename: String) async throws {
-			try await send(#"<record_chop filename="\#(filename)"/>\n"#)
-		}
-
-		/// This allows you to control the current recorded audio levels in decibels. 1.2 would apply 1.2 dB of gain to the audio signal while recording to disk.
-		public func setRecordLevelGain(_ gain: Float) async throws {
-			try await send(#"<record_level gain="\#(gain)"/>\n"#)
-		}
-
-		/// Enable (or disable) automatic gain control for audio, which will use an expander/compressor to normalize the audio while it is being recorded.
-		public func setAutomaticGainControl(_ isOn: Bool) async throws {
-			try await send(#"<record_agc enabled="\#(isOn)"/>\n"#)
-		}
-
-		private func send(_ value: String) async throws {
-			guard let commandContinuation else {
-				throw RecorderError.notRunning
+			/// Start recording at this moment; this is used in conjunction with the “-noautostart” command line.
+			public func start() async throws {
+				_ = try await standardInputWriter.write("<start/>\n")
 			}
 
-			try await withCheckedThrowingContinuation { acknowledgement in
-				let command = Command(value: value, acknowledgement: acknowledgement)
-				switch commandContinuation.yield(command) {
-				case .enqueued:
-					break
-				case .dropped, .terminated:
-					acknowledgement.resume(throwing: RecorderError.notRunning)
-				@unknown default:
-					acknowledgement.resume(throwing: RecorderError.notRunning)
-				}
+			/// This will cancel recording and exit the moment that the file is completely on disk.
+			public func stop() async throws {
+				_ = try await standardInputWriter.write("<exit/>\n")
+			}
+
+			/// Immediately stop recording, then restart another file without dropping frames.
+			public func chop() async throws {
+				_ = try await standardInputWriter.write("<record_chop/>\n")
+			}
+
+			/// Immediately stop recording, and start recording another file in potentially a different location without dropping frames. This allows a recording location to be changed on the fly, allowing you to span recordings across multiple drives or locations.
+			public func chop(filename: String) async throws {
+				_ = try await standardInputWriter.write(#"<record_chop filename="\#(filename)"/>\n"#)
+			}
+
+			/// This allows you to control the current recorded audio levels in decibels. 1.2 would apply 1.2 dB of gain to the audio signal while recording to disk.
+			public func setRecordLevelGain(_ gain: Float) async throws {
+				_ = try await standardInputWriter.write(#"<record_level gain="\#(gain)"/>\n"#)
+			}
+
+			/// Enable (or disable) automatic gain control for audio, which will use an expander/compressor to normalize the audio while it is being recorded.
+			public func setAutomaticGainControl(_ isOn: Bool) async throws {
+				_ = try await standardInputWriter.write(#"<record_agc enabled="\#(isOn)"/>\n"#)
 			}
 		}
 
 		public struct MessageStream: AsyncSequence {
-			typealias UnderlyingStream = AsyncThrowingStream<NDIMessage, any Error>
+			typealias UnderlyingStream = AsyncCompactMapSequence<
+				SubprocessOutputSequence.StringSequence<UTF8>,
+				NDIMessage
+			>
 
 			fileprivate let underlyingStream: UnderlyingStream
 
@@ -200,10 +166,6 @@
 
 				fileprivate var underlyingIterator: UnderlyingStream.AsyncIterator
 
-				fileprivate init(underlyingIterator: UnderlyingStream.AsyncIterator) {
-					self.underlyingIterator = underlyingIterator
-				}
-
 				public mutating func next() async throws -> NDIMessage? {
 					try await underlyingIterator.next()
 				}
@@ -212,33 +174,6 @@
 					try await underlyingIterator.next(isolation: actor)
 				}
 			}
-		}
-
-		private struct Command: Sendable {
-			let value: String
-			let acknowledgement: CheckedContinuation<Void, any Error>
-		}
-
-		private enum RecorderError: Error {
-			case notRunning
-		}
-	}
-
-	private actor LaunchSignal {
-		private var continuation: CheckedContinuation<Void, any Error>?
-
-		init(continuation: CheckedContinuation<Void, any Error>) {
-			self.continuation = continuation
-		}
-
-		func succeed() {
-			continuation?.resume()
-			continuation = nil
-		}
-
-		func fail(with error: any Error) {
-			continuation?.resume(throwing: error)
-			continuation = nil
 		}
 	}
 #endif

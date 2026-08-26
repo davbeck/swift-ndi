@@ -33,44 +33,46 @@
 			)
 
 			let recorder = NDIRecorder(inputName: "Test Input", executableURL: executableURL)
-			var messages = try await recorder.launch(autostart: false).makeAsyncIterator()
+			let result = try await recorder.launch(autostart: false) { recording in
+				var messages = recording.messages.makeAsyncIterator()
 
-			#expect(
-				try await messages.next() == .recordStarted(
-					.init(
-						filename: "test.mov",
-						previewFilename: "test.mov.preview",
-						frameRateNumerator: 30_000,
-						frameRateDenominator: 1_000,
-						xResolution: nil,
-						yResolution: nil
+				#expect(
+					try await messages.next() == .recordStarted(
+						.init(
+							filename: "test.mov",
+							previewFilename: "test.mov.preview",
+							frameRateNumerator: 30_000,
+							frameRateDenominator: 1_000,
+							xResolution: nil,
+							yResolution: nil
+						)
 					)
 				)
-			)
 
-			try await recorder.start()
-			#expect(
-				try await messages.next() == .recording(
-					.init(
-						numberOfFramesWritten: 1,
-						timecode: 100,
-						realTimecodeInFlight: 101,
-						vuDB: -12.5,
-						startTimecode: nil
+				try await recording.start()
+				#expect(
+					try await messages.next() == .recording(
+						.init(
+							numberOfFramesWritten: 1,
+							timecode: 100,
+							realTimecodeInFlight: 101,
+							vuDB: -12.5,
+							startTimecode: nil
+						)
 					)
 				)
-			)
 
-			try await recorder.stop()
-			#expect(
-				try await messages.next() == .recordStopped(
-					.init(numberOfFramesWritten: 1, lastTimecode: 100)
+				try await recording.stop()
+				#expect(
+					try await messages.next() == .recordStopped(
+						.init(numberOfFramesWritten: 1, lastTimecode: 100)
+					)
 				)
-			)
-			#expect(try await messages.next() == nil)
-			await #expect(throws: (any Error).self) {
-				try await recorder.start()
+				#expect(try await messages.next() == nil)
+				return "finished"
 			}
+
+			#expect(result == "finished")
 		}
 
 		@Test
@@ -81,7 +83,7 @@
 			)
 
 			await #expect(throws: (any Error).self) {
-				_ = try await recorder.launch()
+				try await recorder.launch { _ in }
 			}
 		}
 	}
