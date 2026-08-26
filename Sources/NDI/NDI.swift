@@ -219,9 +219,15 @@ public extension NDI {
 			self.init(lib, retaining: runtime)
 		}
 
+		static let libraryPaths = [
+			"@executable_path/../Frameworks/libndi.dylib",
+			"libndi.dylib",
+			"/usr/local/lib/libndi.dylib",
+		]
+
 		static let sharedResult: Result<NDI, NDILoadError> = {
 			var lastError = NDILoadError.dlopenFailed(nil)
-			for path in ["libndi.dylib", "/usr/local/lib/libndi.dylib"] {
+			for path in libraryPaths {
 				do {
 					return try .success(NDI(libraryPath: path))
 				} catch {

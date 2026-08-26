@@ -4,6 +4,15 @@ import Testing
 
 struct NDILibraryRuntimeTests {
 	@Test
+	func searchesTheApplicationFrameworksDirectoryFirst() {
+		#expect(NDI.libraryPaths == [
+			"@executable_path/../Frameworks/libndi.dylib",
+			"libndi.dylib",
+			"/usr/local/lib/libndi.dylib",
+		])
+	}
+
+	@Test
 	func initializesOnceAndDestroysBeforeClosing() throws {
 		let events = Mutex<[String]>([])
 		var runtime: NDILibraryRuntime? = try NDILibraryRuntime(
