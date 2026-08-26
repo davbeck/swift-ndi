@@ -1,5 +1,6 @@
 import Dependencies
 import DependenciesMacros
+import Foundation
 import libNDI
 import OSLog
 
@@ -219,15 +220,35 @@ public extension NDI {
 			self.init(lib, retaining: runtime)
 		}
 
-		static let libraryPaths = [
-			"@executable_path/../Frameworks/libndi.dylib",
-			"libndi.dylib",
-			"/usr/local/lib/libndi.dylib",
-		]
+		static func libraryPaths(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+			var paths = [
+				// App-bundled NDI redistributable; preferred for signed or sandboxed applications.
+				"@executable_path/../Frameworks/libndi.dylib",
+			]
+
+			// Cross-platform NDI runtime-directory override (`NDI_RUNTIME_DIR_V6`).
+			if let runtimeDirectory = environment[NDILIB_REDIST_FOLDER], !runtimeDirectory.isEmpty {
+				paths.append(
+					URL(fileURLWithPath: runtimeDirectory, isDirectory: true)
+						.appendingPathComponent(NDILIB_LIBRARY_NAME)
+						.path
+				)
+			}
+
+			paths.append(contentsOf: [
+				// Default NDI SDK for Apple installation.
+				"/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
+				// NDI macOS runtime redistributable installation.
+				"/usr/local/lib/libndi.dylib",
+				// Final macOS dyld leaf-name search, including LC_RPATH and development environment overrides.
+				NDILIB_LIBRARY_NAME,
+			])
+			return paths
+		}
 
 		static let sharedResult: Result<NDI, NDILoadError> = {
 			var lastError = NDILoadError.dlopenFailed(nil)
-			for path in libraryPaths {
+			for path in libraryPaths() {
 				do {
 					return try .success(NDI(libraryPath: path))
 				} catch {

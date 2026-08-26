@@ -5,10 +5,22 @@ import Testing
 struct NDILibraryRuntimeTests {
 	@Test
 	func searchesTheApplicationFrameworksDirectoryFirst() {
-		#expect(NDI.libraryPaths == [
+		#expect(NDI.libraryPaths(environment: [:]) == [
 			"@executable_path/../Frameworks/libndi.dylib",
-			"libndi.dylib",
+			"/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
 			"/usr/local/lib/libndi.dylib",
+			"libndi.dylib",
+		])
+	}
+
+	@Test
+	func honorsTheNDIRuntimeDirectoryEnvironmentVariable() {
+		#expect(NDI.libraryPaths(environment: ["NDI_RUNTIME_DIR_V6": "/opt/ndi/runtime"]) == [
+			"@executable_path/../Frameworks/libndi.dylib",
+			"/opt/ndi/runtime/libndi.dylib",
+			"/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
+			"/usr/local/lib/libndi.dylib",
+			"libndi.dylib",
 		])
 	}
 
