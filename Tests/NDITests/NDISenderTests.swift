@@ -20,6 +20,26 @@ struct NDISenderTests {
 	}
 
 	@Test
+	func sendsVideoFramesSynchronously() throws {
+		let probe = SenderProbe()
+		let sender = try #require(NDISender(name: "swift-ndi sender test", ndi: probe.ndi))
+
+		try sender.send(makeFrame())
+
+		#expect(probe.sendCount == 1)
+		#expect(probe.receivedVideoBuffer)
+	}
+
+	@Test
+	func reportsConnectedReceivers() throws {
+		let probe = SenderProbe()
+		probe.connectionCount = 3
+		let sender = try #require(NDISender(name: "swift-ndi sender test", ndi: probe.ndi))
+
+		#expect(sender.connectionCount() == 3)
+	}
+
+	@Test
 	func keepsPooledPlayersSeparateForEachReceiverConfiguration() {
 		let highest = NDIPlayer.player(for: "Configuration Test")
 		let lowest = NDIPlayer.player(

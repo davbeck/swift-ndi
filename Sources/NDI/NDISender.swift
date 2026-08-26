@@ -89,7 +89,14 @@ public final class NDISender: @unchecked Sendable {
 	private let ndi: NDI
 	private let sender: NDIlib_send_instance_t
 
-	init?(name: String, ndi: NDI) {
+	/// Creates a sender using the process-wide NDI runtime.
+	///
+	/// Returns `nil` when the NDI runtime cannot be loaded or the SDK cannot create
+	/// a sender with the supplied name.
+	public init?(name: String) {
+		@Dependency(\.ndi) var ndi
+		guard let ndi else { return nil }
+		
 		self.ndi = ndi
 
 		let sender = name.withCString { name in
@@ -109,14 +116,14 @@ public final class NDISender: @unchecked Sendable {
 		ndi.NDIlib_send_destroy(sender)
 	}
 
-	func connectionCount(timeout: Duration = .zero) -> Int {
+	public func connectionCount(timeout: Duration = .zero) -> Int {
 		Int(ndi.NDIlib_send_get_no_connections(
 			sender,
 			UInt32(timeout.seconds * 1_000)
 		))
 	}
 
-	func sourceName() -> String? {
+	public func sourceName() -> String? {
 		guard let source = ndi.NDIlib_send_get_source_name(sender) else {
 			return nil
 		}
@@ -125,7 +132,7 @@ public final class NDISender: @unchecked Sendable {
 	}
 
 	/// This will add a video frame.
-	func send(_ frame: NDISendVideoFrame) throws {
+	public func send(_ frame: NDISendVideoFrame) throws {
 		do {
 			try frame.withNDIFrame { frame in
 				self.ndi.NDIlib_send_send_video_v2(self.sender, frame)
