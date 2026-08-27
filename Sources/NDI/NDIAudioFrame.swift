@@ -246,7 +246,6 @@ public final class NDIReceivedAudioFrame: NDIAudioFrame, @unchecked Sendable {
 
 extension NDIAudioFrame: CustomStringConvertible {
 	public var description: String {
-		let timecode = ref.timecode == NDIlib_send_timecode_synthesize ? "synthesize" : ref.timecode.formatted()
 		let timestamp = ref.timestamp == NDIlib_recv_timestamp_undefined ? "undefined" : ref.timestamp.formatted()
 
 		return "<NDIAudioFrame sample_rate: \(sampleRate), no_channels: \(numberOfChannels), no_samples: \(numberOfSamples), timecode: \(timecode), channel_stride_in_bytes: \(ref.channel_stride_in_bytes), p_metadata: \(metadata ?? ""), timestamp: \(timestamp)>"

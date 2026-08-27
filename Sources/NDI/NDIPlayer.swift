@@ -127,56 +127,74 @@ private final class NDIFrameSubscriptionToken: @unchecked Sendable {
 }
 
 public actor NDIPlayer {
-	private static let playerPool: Mutex<[String: Weak<NDIPlayer>]> = .init([:])
+	private struct PoolKey: Hashable {
+		var sourceName: String
+		var configuration: NDIReceiverConfiguration
+	}
 
-	public static func player(for name: String) -> NDIPlayer {
-		playerPool.withLock { pool in
-			if let player = pool[name]?.value {
+	private static let playerPool: Mutex<[PoolKey: Weak<NDIPlayer>]> = .init([:])
+
+	public static func player(
+		for name: String,
+		configuration: NDIReceiverConfiguration = .init()
+	) -> NDIPlayer {
+		let key = PoolKey(sourceName: name, configuration: configuration)
+		return playerPool.withLock { pool in
+			if let player = pool[key]?.value {
 				return player
 			} else {
-				let player = NDIPlayer(name: name)
-				pool[name] = .init(value: player)
+				let player = NDIPlayer(name: name, configuration: configuration)
+				pool[key] = .init(value: player)
 				return player
 			}
 		}
 	}
 
 	public nonisolated let sourceName: String
+	public nonisolated let configuration: NDIReceiverConfiguration
 	private var source: NDISource?
 
-	private let makeCapture: @Sendable (NDISource?, String) async -> NDIFrameCapture?
+	private let makeCapture: @Sendable (NDISource?, String, NDIReceiverConfiguration) async -> NDIFrameCapture?
 	private let startReceiveLoop: NDIReceiveLoopStarter
 
-	public init(name: String) {
+	public init(name: String, configuration: NDIReceiverConfiguration = .init()) {
 		self.sourceName = name
+		self.configuration = configuration
 		self.makeCapture = Self.liveCapture
 		self.startReceiveLoop = .live
 	}
 
-	public init(source: NDISource) {
+	public init(source: NDISource, configuration: NDIReceiverConfiguration = .init()) {
 		self.sourceName = source.name
 		self.source = source
+		self.configuration = configuration
 		self.makeCapture = Self.liveCapture
 		self.startReceiveLoop = .live
 	}
 
 	init(
 		name: String,
+		configuration: NDIReceiverConfiguration = .init(),
 		capture: NDIFrameCapture,
 		startReceiveLoop: NDIReceiveLoopStarter
 	) {
 		self.sourceName = name
-		self.makeCapture = { _, _ in capture }
+		self.configuration = configuration
+		self.makeCapture = { _, _, _ in capture }
 		self.startReceiveLoop = startReceiveLoop
 	}
 
-	private static func liveCapture(source: NDISource?, sourceName: String) async -> NDIFrameCapture? {
+	private static func liveCapture(
+		source: NDISource?,
+		sourceName: String,
+		configuration: NDIReceiverConfiguration
+	) async -> NDIFrameCapture? {
 		let receiver: NDIReceiver
 		if let source {
-			guard let sourceReceiver = NDIReceiver(source: source) else { return nil }
+			guard let sourceReceiver = NDIReceiver(source: source, configuration: configuration) else { return nil }
 			receiver = sourceReceiver
 		} else {
-			guard let namedReceiver = NDIReceiver() else { return nil }
+			guard let namedReceiver = NDIReceiver(configuration: configuration) else { return nil }
 			await namedReceiver.connect(name: sourceName)
 			receiver = namedReceiver
 		}
@@ -195,9 +213,10 @@ public actor NDIPlayer {
 
 		let source = self.source
 		let sourceName = self.sourceName
+		let configuration = self.configuration
 		let makeCapture = self.makeCapture
 		let task = Task {
-			await makeCapture(source, sourceName)
+			await makeCapture(source, sourceName, configuration)
 		}
 		getCaptureTask = task
 		return await task.value

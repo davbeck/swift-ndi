@@ -4,23 +4,66 @@ import Dependencies
 import libNDI
 import OSLog
 
+public struct NDIReceiverConfiguration: Hashable, Sendable {
+	public enum Bandwidth: Hashable, Sendable {
+		case highest
+		case lowest
+		case audioOnly
+
+		fileprivate var ndiValue: NDIlib_recv_bandwidth_e {
+			switch self {
+			case .highest:
+				NDIlib_recv_bandwidth_highest
+			case .lowest:
+				NDIlib_recv_bandwidth_lowest
+			case .audioOnly:
+				NDIlib_recv_bandwidth_audio_only
+			}
+		}
+	}
+
+	public enum Media: CaseIterable, Hashable, Sendable {
+		case video
+		case audio
+		case metadata
+	}
+
+	public var bandwidth: Bandwidth
+	public var capturedMedia: Set<Media>
+
+	public init(
+		bandwidth: Bandwidth = .highest,
+		capturedMedia: Set<Media> = Set(Media.allCases)
+	) {
+		self.bandwidth = bandwidth
+		self.capturedMedia = capturedMedia
+	}
+}
+
+public typealias NDICaptureType = NDIReceiverConfiguration.Media
+
 public final class NDIReceiver: @unchecked Sendable {
 	private let logger = Logger(category: "NDIReceiver")
 
 	let ndi: NDI
+	public let configuration: NDIReceiverConfiguration
 
 	let pNDI_recv: NDIlib_recv_instance_t
 
-	public init?(source: NDISource? = nil) {
+	public init?(
+		source: NDISource? = nil,
+		configuration: NDIReceiverConfiguration = .init()
+	) {
 		@Dependency(\.ndi) var ndi
 		guard let ndi else { return nil }
 
 		self.ndi = ndi
+		self.configuration = configuration
 
 		var recv_desc = NDIlib_recv_create_v3_t(
 			source_to_connect_to: source?.ref ?? NDIlib_source_t(),
 			color_format: NDIlib_recv_color_format_UYVY_BGRA,
-			bandwidth: NDIlib_recv_bandwidth_highest,
+			bandwidth: configuration.bandwidth.ndiValue,
 			allow_video_fields: true,
 			p_ndi_recv_name: nil
 		)
@@ -45,7 +88,11 @@ public final class NDIReceiver: @unchecked Sendable {
 		ndi.NDIlib_recv_connect(pNDI_recv, &sourceRef)
 	}
 
-	public func capture(types: Set<NDICaptureType> = Set(NDICaptureType.allCases), timeout: Duration = .zero) -> NDIReceivedFrame {
+	public func capture(
+		types: Set<NDICaptureType>? = nil,
+		timeout: Duration = .zero
+	) -> NDIReceivedFrame {
+		let types = (types ?? configuration.capturedMedia).intersection(configuration.capturedMedia)
 		// The descriptors
 		var video_frame: NDIlib_video_frame_v2_t = .init(
 			xres: 0,
@@ -117,12 +164,6 @@ public final class NDIReceiver: @unchecked Sendable {
 			return .unknown
 		}
 	}
-}
-
-public enum NDICaptureType: CaseIterable, Sendable {
-	case video
-	case audio
-	case metadata
 }
 
 public enum NDIReceivedFrame: Sendable {

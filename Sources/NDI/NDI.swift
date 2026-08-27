@@ -1,5 +1,6 @@
 import Dependencies
 import DependenciesMacros
+import Foundation
 import libNDI
 import OSLog
 
@@ -45,6 +46,34 @@ public struct NDI: Sendable {
 	var NDIlib_recv_free_audio_v3: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_audio_frame_v3_t>?) -> Void
 
 	var NDIlib_recv_free_metadata: @Sendable (NDIlib_recv_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
+
+	// MARK: - SEND
+
+	var NDIlib_send_create: @Sendable (UnsafePointer<NDIlib_send_create_t>?) -> NDIlib_send_instance_t?
+
+	var NDIlib_send_destroy: @Sendable (NDIlib_send_instance_t?) -> Void
+
+	var NDIlib_send_send_video_v2: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_video_frame_v2_t>?) -> Void
+
+	var NDIlib_send_send_audio_v3: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_audio_frame_v3_t>?) -> Void
+
+	var NDIlib_send_send_metadata: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
+
+	var NDIlib_send_capture: @Sendable (NDIlib_send_instance_t?, UnsafeMutablePointer<NDIlib_metadata_frame_t>?, UInt32) -> NDIlib_frame_type_e = { _, _, _ in NDIlib_frame_type_none }
+
+	var NDIlib_send_free_metadata: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
+
+	var NDIlib_send_get_tally: @Sendable (NDIlib_send_instance_t?, UnsafeMutablePointer<NDIlib_tally_t>?, UInt32) -> Bool = { _, _, _ in false }
+
+	var NDIlib_send_get_no_connections: @Sendable (NDIlib_send_instance_t?, UInt32) -> Int32 = { _, _ in 0 }
+
+	var NDIlib_send_clear_connection_metadata: @Sendable (NDIlib_send_instance_t?) -> Void
+
+	var NDIlib_send_add_connection_metadata: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_metadata_frame_t>?) -> Void
+
+	var NDIlib_send_set_failover: @Sendable (NDIlib_send_instance_t?, UnsafePointer<NDIlib_source_t>?) -> Void
+
+	var NDIlib_send_get_source_name: @Sendable (NDIlib_send_instance_t?) -> UnsafePointer<NDIlib_source_t>?
 }
 
 public enum NDILoadError: Error, Equatable, LocalizedError, Sendable {
@@ -139,7 +168,21 @@ public extension NDI {
 			NDIlib_recv_capture_v3: { lib.NDIlib_recv_capture_v3($0, $1, $2, $3, $4) },
 			NDIlib_recv_free_video_v2: { lib.NDIlib_recv_free_video_v2($0, $1) },
 			NDIlib_recv_free_audio_v3: { lib.NDIlib_recv_free_audio_v3($0, $1) },
-			NDIlib_recv_free_metadata: { lib.NDIlib_recv_free_metadata($0, $1) }
+			NDIlib_recv_free_metadata: { lib.NDIlib_recv_free_metadata($0, $1) },
+
+			NDIlib_send_create: { lib.NDIlib_send_create($0) },
+			NDIlib_send_destroy: { lib.NDIlib_send_destroy($0) },
+			NDIlib_send_send_video_v2: { lib.NDIlib_send_send_video_v2($0, $1) },
+			NDIlib_send_send_audio_v3: { lib.NDIlib_send_send_audio_v3($0, $1) },
+			NDIlib_send_send_metadata: { lib.NDIlib_send_send_metadata($0, $1) },
+			NDIlib_send_capture: { lib.NDIlib_send_capture($0, $1, $2) },
+			NDIlib_send_free_metadata: { lib.NDIlib_send_free_metadata($0, $1) },
+			NDIlib_send_get_tally: { lib.NDIlib_send_get_tally($0, $1, $2) },
+			NDIlib_send_get_no_connections: { lib.NDIlib_send_get_no_connections($0, $1) },
+			NDIlib_send_clear_connection_metadata: { lib.NDIlib_send_clear_connection_metadata($0) },
+			NDIlib_send_add_connection_metadata: { lib.NDIlib_send_add_connection_metadata($0, $1) },
+			NDIlib_send_set_failover: { lib.NDIlib_send_set_failover($0, $1) },
+			NDIlib_send_get_source_name: { lib.NDIlib_send_get_source_name($0) }
 		)
 	}
 
@@ -177,9 +220,35 @@ public extension NDI {
 			self.init(lib, retaining: runtime)
 		}
 
+		static func libraryPaths(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+			var paths = [
+				// App-bundled NDI redistributable; preferred for signed or sandboxed applications.
+				"@executable_path/../Frameworks/libndi.dylib",
+			]
+
+			// Cross-platform NDI runtime-directory override (`NDI_RUNTIME_DIR_V6`).
+			if let runtimeDirectory = environment[NDILIB_REDIST_FOLDER], !runtimeDirectory.isEmpty {
+				paths.append(
+					URL(fileURLWithPath: runtimeDirectory, isDirectory: true)
+						.appendingPathComponent(NDILIB_LIBRARY_NAME)
+						.path
+				)
+			}
+
+			paths.append(contentsOf: [
+				// Default NDI SDK for Apple installation.
+				"/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
+				// NDI macOS runtime redistributable installation.
+				"/usr/local/lib/libndi.dylib",
+				// Final macOS dyld leaf-name search, including LC_RPATH and development environment overrides.
+				NDILIB_LIBRARY_NAME,
+			])
+			return paths
+		}
+
 		static let sharedResult: Result<NDI, NDILoadError> = {
 			var lastError = NDILoadError.dlopenFailed(nil)
-			for path in ["libndi.dylib", "/usr/local/lib/libndi.dylib"] {
+			for path in libraryPaths() {
 				do {
 					return try .success(NDI(libraryPath: path))
 				} catch {
