@@ -8,7 +8,7 @@ import Testing
 
 struct NDIPlayerTests {
 	@Test
-	func sharesOneReceiveLoopAndWaitsForItToStopBeforeRestarting() async throws {
+	func sharesOneReceiveLoopAndWaitsForItToStopBeforeRestarting() async {
 		let probe = ReceiveLoopProbe()
 		var startEvents = probe.startEvents.makeAsyncIterator()
 		let player = NDIPlayer(

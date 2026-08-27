@@ -40,7 +40,7 @@ public class NDIFind: @unchecked Sendable {
 	public func waitForSources(timeout: Duration = .zero) -> Bool {
 		_waitForSources(timeout: timeout)
 	}
-	
+
 	public func waitForSources(timeout: Duration? = nil) async -> Bool {
 		let deadline = timeout.map { clock.now.advanced(by: $0) }
 
@@ -76,7 +76,7 @@ public class NDIFind: @unchecked Sendable {
 
 	public func getSource(named name: String, timeout: Duration? = nil) async -> NDISource? {
 		let deadline = timeout.map { clock.now.advanced(by: $0) }
-		
+
 		if let source = getCurrentSources().first(where: { $0.name == name }) {
 			return source
 		}

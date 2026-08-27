@@ -5,7 +5,7 @@ import Synchronization
 import Testing
 @testable import NDI
 
-struct NDIFindTests {
+enum NDIFindTests {
 	struct waitForSources {
 		@Test
 		func withTimout() throws {
@@ -64,7 +64,7 @@ struct NDIFindTests {
 		@Test
 		func withoutTimeout() async throws {
 			var ndi = NDI()
-			
+
 			let findMock = NDIFindMockInstance()
 			ndi.use(findMock)
 
@@ -85,26 +85,26 @@ struct NDIFindTests {
 
 			await clock.advance(by: .seconds(1))
 			#expect(_sources.withLock { $0 } == nil)
-			
+
 			findMock.sources = [
 				.init(name: "test.local (2)", url: "ndi://name=TEST.LOCAL%20(2)"),
 			]
 			#expect(_sources.withLock { $0 } == nil)
-			
+
 			findMock.sources = [
 				.init(name: "test.local (1)", url: "ndi://name=TEST.LOCAL%20(1)"),
 			]
 			await clock.advance(by: .seconds(0.1))
 			#expect(_sources.withLock { $0 } == .init(name: "test.local (1)", url: "ndi://name=TEST.LOCAL%20(1)"))
-			
+
 			task.cancel()
 			await clock.run()
 		}
-		
+
 		@Test
 		func timeout() async throws {
 			var ndi = NDI()
-			
+
 			let findMock = NDIFindMockInstance()
 			ndi.use(findMock)
 
@@ -125,14 +125,14 @@ struct NDIFindTests {
 
 			await clock.advance(by: .seconds(11))
 			#expect(_sources.withLock { $0 } == nil)
-			
+
 			await clock.run()
 		}
 	}
 
 	struct getCurrentSources {
 		@Test
-		func mapsResults() async throws {
+		func mapsResults() throws {
 			var ndi = NDI()
 
 			let findMock = NDIFindMockInstance()

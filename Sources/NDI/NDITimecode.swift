@@ -48,10 +48,6 @@ public extension CMTimebase {
 public struct NDITimecodeGenerator: DependencyKey, Sendable {
 	var now: @Sendable () -> NDITimecode
 
-	init(now: @escaping @Sendable () -> NDITimecode) {
-		self.now = now
-	}
-
 	public static let liveValue: NDITimecodeGenerator = .init {
 		// adapted from https://github.com/swiftlang/swift-corelibs-foundation/blob/4a9694d396b34fb198f4c6dd865702f7dc0b0dcf/Sources/CoreFoundation/CFDate.c#L80
 		// TODO: handle Windows

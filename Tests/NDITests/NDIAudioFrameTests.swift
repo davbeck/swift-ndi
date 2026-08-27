@@ -69,7 +69,7 @@ struct NDIAudioFrameTests {
 		))
 
 		let sampleBuffer = try frame.sampleBuffer(interleaved: true)
-		let blockBuffer = sampleBuffer.dataBuffer!
+		let blockBuffer = try #require(sampleBuffer.dataBuffer)
 		var interleavedData = [Float32](repeating: 0, count: Int(numberOfChannels * numberOfSamples))
 
 		let status = interleavedData.withUnsafeMutableBytes { bytes in

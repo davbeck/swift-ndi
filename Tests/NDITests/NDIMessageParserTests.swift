@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import NDI
 
 struct NDIMessageParserTests {
@@ -25,7 +24,7 @@ struct NDIMessageParserTests {
 		#expect(message.resolution == nil)
 	}
 
-	@Test func parse_record_started() async throws {
+	@Test func parse_record_started() throws {
 		// given
 		let xml = #"""
 		<record_started filename="/Users/davbeck/Movies/Recordings/Test.mov" filename_pvw="/Users/davbeck/Movies/Recordings/Test.mov.preview" frame_rate_n="30000" frame_rate_d="1000" xres="1080" yres="1920"/>
@@ -49,8 +48,8 @@ struct NDIMessageParserTests {
 			)
 		)
 	}
-	
-	@Test func parse_record_started_omitted_res() async throws {
+
+	@Test func parse_record_started_omitted_res() throws {
 		// given
 		let xml = #"""
 		<record_started filename="e:\Temp 2.mov" filename_pvw="e:\Temp 2.mov.preview" frame_rate_n="60000" frame_rate_d="1001"/>
@@ -74,8 +73,8 @@ struct NDIMessageParserTests {
 			)
 		)
 	}
-	
-	@Test func parse_recording() async throws {
+
+	@Test func parse_recording() throws {
 		// given
 		let xml = #"""
 		<recording no_frames="21" timecode="154139000000" real_timecode_inflight="154139333333" vu_dB="-54.688214" start_timecode="154132333333"/>
@@ -90,16 +89,16 @@ struct NDIMessageParserTests {
 			message == .recording(
 				.init(
 					numberOfFramesWritten: 21,
-					timecode: 154139000000,
-					realTimecodeInFlight: 154139333333,
+					timecode: 154_139_000_000,
+					realTimecodeInFlight: 154_139_333_333,
 					vuDB: -54.688214,
-					startTimecode: 154132333333
+					startTimecode: 154_132_333_333
 				)
 			)
 		)
 	}
-	
-	@Test func parse_recording_withoutStartTimecode() async throws {
+
+	@Test func parse_recording_withoutStartTimecode() throws {
 		// given
 		let xml = #"""
 		<recording no_frames="43" timecode="154146333333" real_timecode_inflight="154146666667" vu_dB="-57.499760"/>
@@ -114,16 +113,16 @@ struct NDIMessageParserTests {
 			message == .recording(
 				.init(
 					numberOfFramesWritten: 43,
-					timecode: 154146333333,
-					realTimecodeInFlight: 154146666667,
+					timecode: 154_146_333_333,
+					realTimecodeInFlight: 154_146_666_667,
 					vuDB: -57.499760,
 					startTimecode: nil
 				)
 			)
 		)
 	}
-	
-	@Test func parse_recording_negativeInf() async throws {
+
+	@Test func parse_recording_negativeInf() throws {
 		// given
 		let xml = #"""
 		<recording no_frames="313" timecode="154236333333" real_timecode_inflight="154236666667" vu_dB="-inf"/>
@@ -138,16 +137,16 @@ struct NDIMessageParserTests {
 			message == .recording(
 				.init(
 					numberOfFramesWritten: 313,
-					timecode: 154236333333,
-					realTimecodeInFlight: 154236666667,
+					timecode: 154_236_333_333,
+					realTimecodeInFlight: 154_236_666_667,
 					vuDB: -(.infinity),
 					startTimecode: nil
 				)
 			)
 		)
 	}
-	
-	@Test func parse_recordStopped() async throws {
+
+	@Test func parse_recordStopped() throws {
 		// given
 		let xml = #"""
 		<record_stopped no_frames="1019" last_timecode="154471666667"/>
@@ -162,7 +161,7 @@ struct NDIMessageParserTests {
 			message == .recordStopped(
 				.init(
 					numberOfFramesWritten: 1019,
-					lastTimecode: 154471666667
+					lastTimecode: 154_471_666_667
 				)
 			)
 		)

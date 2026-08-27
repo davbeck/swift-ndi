@@ -2,9 +2,9 @@ import libNDI
 import string_h
 
 public struct NDISource: @unchecked Sendable {
-	// referenced to keep ref alive
-	// NDIlib_find_instance_t manages the memory of the sources it returns
-	// NDISourceAllocator is a way for us to track a manually created source
+	/// referenced to keep ref alive
+	/// NDIlib_find_instance_t manages the memory of the sources it returns
+	/// NDISourceAllocator is a way for us to track a manually created source
 	private var allocator: AnyObject
 
 	var ref: NDIlib_source_t
@@ -46,7 +46,9 @@ extension NDISource: Hashable {
 }
 
 extension NDISource: Identifiable {
-	public var id: String { String(cString: ref.p_url_address) }
+	public var id: String {
+		String(cString: ref.p_url_address)
+	}
 }
 
 extension NDISource: CustomStringConvertible {

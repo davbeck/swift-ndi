@@ -24,7 +24,7 @@ public final class NDIFindManager {
 
 	public private(set) var sources: [NDISource] = []
 
-	internal init?() {
+	init?() {
 		guard let instance = NDIFind() else {
 			return nil
 		}

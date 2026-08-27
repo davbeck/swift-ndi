@@ -30,10 +30,10 @@ let package = Package(
 				.product(name: "IssueReporting", package: "xctest-dynamic-overlay"),
 			],
 			linkerSettings: [
-//				.unsafeFlags([
-//					"-L/Library/NDI SDK for Apple/lib/macOS",
-//				]),
-//				.linkedLibrary("ndi", .when(platforms: [.macOS])),
+				// .unsafeFlags([
+				//   "-L/Library/NDI SDK for Apple/lib/macOS",
+				// ]),
+				// .linkedLibrary("ndi", .when(platforms: [.macOS])),
 				.linkedFramework("Accelerate"),
 				.linkedFramework("VideoToolbox"),
 			]

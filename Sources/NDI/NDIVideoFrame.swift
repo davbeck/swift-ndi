@@ -31,8 +31,9 @@ public class NDIVideoFrame: @unchecked Sendable {
 		.init(width: CGFloat(ref.xres), height: CGFloat(ref.yres))
 	}
 
-	// Per frame metadata for this frame. This should be in XML format.
-	// If you do not want any metadata then you may specify nil here.
+	/// Per frame metadata for this frame. This should be in XML format.
+	/// 
+	/// If you do not want any metadata then you may specify nil here.
 	public var metadata: String? {
 		guard let p_metadata = ref.p_metadata else { return nil }
 		return String(cString: p_metadata)

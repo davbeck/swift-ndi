@@ -25,7 +25,7 @@ public class NDIMessageParser: NSObject {
 		xmlParser.delegate = self
 	}
 
-	private func parseAttribute(name: String) throws (Error) -> String {
+	private func parseAttribute(name: String) throws(Error) -> String {
 		guard let value = attributes[name] else {
 			throw Error.missingAttribute(message: elementName ?? "", attribute: name)
 		}
@@ -33,7 +33,7 @@ public class NDIMessageParser: NSObject {
 		return value
 	}
 
-	private func parseAttribute<Value: LosslessStringConvertible>(as: Value.Type, name: String) throws (Error) -> Value {
+	private func parseAttribute<Value: LosslessStringConvertible>(as: Value.Type, name: String) throws(Error) -> Value {
 		let valueString = try parseAttribute(name: name)
 
 		guard let value = Value(valueString) else {
@@ -43,7 +43,7 @@ public class NDIMessageParser: NSObject {
 		return value
 	}
 
-	public func parse() throws (Error) -> NDIMessage {
+	public func parse() throws(Error) -> NDIMessage {
 		xmlParser.parse()
 
 		if let error = xmlParser.parserError {
