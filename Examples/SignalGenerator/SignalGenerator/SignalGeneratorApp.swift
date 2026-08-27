@@ -8,7 +8,7 @@ struct SignalGeneratorApp: App {
 		Window("Signal Generator", id: "signal-generator") {
 			ContentView(model: model)
 		}
-		.defaultSize(width: 1_120, height: 720)
+		.defaultSize(width: 1120, height: 720)
 		.commands {
 			CommandMenu("Signal") {
 				Button(model.isSending ? "Stop Sending" : "Start Sending") {

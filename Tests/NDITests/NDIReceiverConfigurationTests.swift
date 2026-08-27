@@ -58,9 +58,15 @@ private final class ReceiverProbe: @unchecked Sendable {
 	) -> NDIlib_frame_type_e {
 		{ [self] _, video, audio, metadata, _ in
 			self.state.withLock { state in
-				if video != nil { state.capturedMedia.insert(.video) }
-				if audio != nil { state.capturedMedia.insert(.audio) }
-				if metadata != nil { state.capturedMedia.insert(.metadata) }
+				if video != nil {
+					state.capturedMedia.insert(.video)
+				}
+				if audio != nil {
+					state.capturedMedia.insert(.audio)
+				}
+				if metadata != nil {
+					state.capturedMedia.insert(.metadata)
+				}
 			}
 			return NDIlib_frame_type_none
 		}

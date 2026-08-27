@@ -7,7 +7,7 @@ import Testing
 
 struct NDISenderTests {
 	@Test
-	func createsAndDestroysTheSDKSenderOnce() async throws {
+	func createsAndDestroysTheSDKSenderOnce() async {
 		let probe = SenderProbe()
 		var sender: NDISender? = NDISender(name: "swift-ndi sender test", ndi: probe.ndi)
 
@@ -214,18 +214,53 @@ private final class SenderProbe: @unchecked Sendable {
 		sourceURL.deallocate()
 	}
 
-	var createCount: Int { state.withLock(\.createCount) }
-	var destroyCount: Int { state.withLock(\.destroyCount) }
-	var sendCount: Int { state.withLock(\.sendCount) }
-	var receivedVideoBuffer: Bool { state.withLock(\.receivedVideoBuffer) }
-	var audio: AudioSnapshot? { state.withLock(\.audio) }
-	var sentMetadata: [String] { state.withLock(\.sentMetadata) }
-	var sentMetadataTimecodes: [Int64] { state.withLock(\.sentMetadataTimecodes) }
-	var connectionMetadata: [String] { state.withLock(\.connectionMetadata) }
-	var clearConnectionMetadataCount: Int { state.withLock(\.clearConnectionMetadataCount) }
-	var freeMetadataCount: Int { state.withLock(\.freeMetadataCount) }
-	var failoverSource: NDISourceSnapshot? { state.withLock(\.failoverSource) }
-	var clearedFailover: Bool { state.withLock(\.clearedFailover) }
+	var createCount: Int {
+		state.withLock(\.createCount)
+	}
+
+	var destroyCount: Int {
+		state.withLock(\.destroyCount)
+	}
+
+	var sendCount: Int {
+		state.withLock(\.sendCount)
+	}
+
+	var receivedVideoBuffer: Bool {
+		state.withLock(\.receivedVideoBuffer)
+	}
+
+	var audio: AudioSnapshot? {
+		state.withLock(\.audio)
+	}
+
+	var sentMetadata: [String] {
+		state.withLock(\.sentMetadata)
+	}
+
+	var sentMetadataTimecodes: [Int64] {
+		state.withLock(\.sentMetadataTimecodes)
+	}
+
+	var connectionMetadata: [String] {
+		state.withLock(\.connectionMetadata)
+	}
+
+	var clearConnectionMetadataCount: Int {
+		state.withLock(\.clearConnectionMetadataCount)
+	}
+
+	var freeMetadataCount: Int {
+		state.withLock(\.freeMetadataCount)
+	}
+
+	var failoverSource: NDISourceSnapshot? {
+		state.withLock(\.failoverSource)
+	}
+
+	var clearedFailover: Bool {
+		state.withLock(\.clearedFailover)
+	}
 
 	var metadataToCapture: String? {
 		get { state.withLock(\.metadataToCapture) }

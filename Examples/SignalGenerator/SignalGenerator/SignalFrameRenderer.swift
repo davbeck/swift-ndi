@@ -67,7 +67,7 @@ nonisolated enum SignalFrameRenderer {
 
 		let clock = systemTimeString(for: date)
 		let counter = String(format: "%02d", frameInSecond) + " / " + configuration.frameRate.counterLabel
-		let scale = CGFloat(height) / 1_080
+		let scale = CGFloat(height) / 1080
 		drawCentered(clock, y: CGFloat(height) * 0.55, size: 122 * scale, context: context)
 		drawCentered(counter, y: CGFloat(height) * 0.40, size: 68 * scale, context: context)
 
@@ -103,7 +103,7 @@ nonisolated enum SignalFrameRenderer {
 				context.fill(CGRect(x: CGFloat(index) * barWidth, y: 0, width: barWidth + 1, height: bounds.height))
 			}
 		case .grayscale:
-			let colors = (0..<10).map { CGFloat($0) / 9 }
+			let colors = (0 ..< 10).map { CGFloat($0) / 9 }
 			let barWidth = bounds.width / CGFloat(colors.count)
 			for (index, white) in colors.enumerated() {
 				context.setFillColor(CGColor(gray: white, alpha: 1))
@@ -111,8 +111,8 @@ nonisolated enum SignalFrameRenderer {
 			}
 		case .checkerboard:
 			let cell = bounds.height / 8
-			for row in 0..<8 {
-				for column in 0..<Int(ceil(bounds.width / cell)) {
+			for row in 0 ..< 8 {
+				for column in 0 ..< Int(ceil(bounds.width / cell)) {
 					let white: CGFloat = (row + column).isMultiple(of: 2) ? 0.72 : 0.12
 					context.setFillColor(CGColor(gray: white, alpha: 1))
 					context.fill(CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell))

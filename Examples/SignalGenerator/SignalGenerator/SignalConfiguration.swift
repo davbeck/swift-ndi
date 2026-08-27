@@ -29,28 +29,35 @@ nonisolated enum SignalResolution: String, CaseIterable, Identifiable, Sendable 
 	case fullHDSquare = "1080 × 1080 (Square)"
 	case ultraHD = "Ultra HD 2160p"
 
-	var id: Self { self }
+	var id: Self {
+		self
+	}
 
 	var width: Int {
 		switch self {
-		case .hd: 1_280
-		case .fullHD: 1_920
-		case .fullHDVertical, .fullHDSquare: 1_080
-		case .ultraHD: 3_840
+		case .hd: 1280
+		case .fullHD: 1920
+		case .fullHDVertical, .fullHDSquare: 1080
+		case .ultraHD: 3840
 		}
 	}
 
 	var height: Int {
 		switch self {
 		case .hd: 720
-		case .fullHD, .fullHDSquare: 1_080
-		case .fullHDVertical: 1_920
-		case .ultraHD: 2_160
+		case .fullHD, .fullHDSquare: 1080
+		case .fullHDVertical: 1920
+		case .ultraHD: 2160
 		}
 	}
 
-	var dimensions: String { "\(width) × \(height)" }
-	var size: CGSize { CGSize(width: width, height: height) }
+	var dimensions: String {
+		"\(width) × \(height)"
+	}
+
+	var size: CGSize {
+		CGSize(width: width, height: height)
+	}
 }
 
 nonisolated enum SignalFrameRate: String, CaseIterable, Identifiable, Sendable {
@@ -63,30 +70,38 @@ nonisolated enum SignalFrameRate: String, CaseIterable, Identifiable, Sendable {
 	case fps5994 = "59.94 fps"
 	case fps60 = "60 fps"
 
-	var id: Self { self }
+	var id: Self {
+		self
+	}
 
 	var numerator: Int32 {
 		switch self {
-		case .fps2398: 24_000
+		case .fps2398: 24000
 		case .fps24: 24
 		case .fps25: 25
-		case .fps2997: 30_000
+		case .fps2997: 30000
 		case .fps30: 30
 		case .fps50: 50
-		case .fps5994: 60_000
+		case .fps5994: 60000
 		case .fps60: 60
 		}
 	}
 
 	var denominator: Int32 {
 		switch self {
-		case .fps2398, .fps2997, .fps5994: 1_001
+		case .fps2398, .fps2997, .fps5994: 1001
 		default: 1
 		}
 	}
 
-	var framesPerSecond: Double { Double(numerator) / Double(denominator) }
-	var nominalFramesPerSecond: Int { Int(framesPerSecond.rounded()) }
+	var framesPerSecond: Double {
+		Double(numerator) / Double(denominator)
+	}
+
+	var nominalFramesPerSecond: Int {
+		Int(framesPerSecond.rounded())
+	}
+
 	var counterLabel: String {
 		switch self {
 		case .fps2398: "23.98"
@@ -95,7 +110,10 @@ nonisolated enum SignalFrameRate: String, CaseIterable, Identifiable, Sendable {
 		default: "\(nominalFramesPerSecond)"
 		}
 	}
-	var mediaTime: CMTime { CMTime(value: Int64(numerator), timescale: denominator) }
+
+	var mediaTime: CMTime {
+		CMTime(value: Int64(numerator), timescale: denominator)
+	}
 }
 
 nonisolated enum SignalPattern: String, CaseIterable, Identifiable, Sendable {
@@ -103,14 +121,18 @@ nonisolated enum SignalPattern: String, CaseIterable, Identifiable, Sendable {
 	case grayscale = "Grayscale"
 	case checkerboard = "Checkerboard"
 
-	var id: Self { self }
+	var id: Self {
+		self
+	}
 }
 
 nonisolated enum SignalAudioChannels: String, CaseIterable, Identifiable, Sendable {
 	case mono = "Mono"
 	case stereo = "Stereo"
 
-	var id: Self { self }
+	var id: Self {
+		self
+	}
 
 	var count: Int {
 		switch self {
@@ -125,7 +147,9 @@ nonisolated enum SignalAudioSampleRate: String, CaseIterable, Identifiable, Send
 	case hz48000 = "48 kHz"
 	case hz96000 = "96 kHz"
 
-	var id: Self { self }
+	var id: Self {
+		self
+	}
 
 	var value: Int {
 		switch self {

@@ -1,10 +1,3 @@
-//
-//  NDISenderTally.swift
-//  swift-ndi
-//
-//  Created by David Beck on 8/26/26.
-//
-
 import CoreMedia
 import CoreVideo
 import Dependencies

@@ -189,5 +189,5 @@ private struct SignalInspector: View {
 
 #Preview {
 	ContentView(model: SignalGeneratorModel())
-		.frame(width: 1_120, height: 720)
+		.frame(width: 1120, height: 720)
 }
