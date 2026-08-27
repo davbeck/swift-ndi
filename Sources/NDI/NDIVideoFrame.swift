@@ -32,7 +32,7 @@ public class NDIVideoFrame: @unchecked Sendable {
 	}
 
 	/// Per frame metadata for this frame. This should be in XML format.
-	/// 
+	///
 	/// If you do not want any metadata then you may specify nil here.
 	public var metadata: String? {
 		guard let p_metadata = ref.p_metadata else { return nil }

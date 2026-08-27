@@ -1,0 +1,31 @@
+included:
+  - Package.swift
+  - Plugins
+  - Sources
+  - Tests
+  - Fixtures
+
+excluded:
+  - Sources/ProPresenterProto/Generated
+
+only_rules:
+  - custom_rules
+  - force_cast
+  - force_try
+  - force_unwrapping
+
+force_cast: error
+force_try: error
+force_unwrapping: error
+
+custom_rules:
+  unchecked_sendable:
+    name: "Unchecked Sendable"
+    regex: "@unchecked"
+    message: "Do not bypass Sendable checking with @unchecked."
+    severity: error
+  unsafe_nonisolated:
+    name: "Unsafe nonisolated"
+    regex: "nonisolated\\s*\\(\\s*unsafe\\s*\\)"
+    message: "Do not bypass actor isolation with nonisolated(unsafe)."
+    severity: error
