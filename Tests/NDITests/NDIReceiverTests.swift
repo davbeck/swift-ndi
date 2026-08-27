@@ -192,6 +192,8 @@ private extension NDIReceivedFrame {
 			"audio"
 		case .metadata:
 			"metadata"
+		case .marker:
+			"marker"
 		case .statusChange:
 			"statusChange"
 		case .unknown:

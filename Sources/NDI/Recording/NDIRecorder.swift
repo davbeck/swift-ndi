@@ -2,6 +2,7 @@
 	import Foundation
 	import IssueReporting
 	import OSLog
+	import Subprocess
 
 	private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "NDIRecorder")
 
@@ -9,11 +10,6 @@
 	///
 	/// You will need to have access to the NDI recording executable at runtime. When the NDI SDK is installed, this is located at `/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.Recording`.
 	public final class NDIRecorder {
-		let process = Process()
-		let standardOutput = Pipe()
-		let standardError = Pipe()
-		let standardInput = Pipe()
-
 		public let inputName: String
 
 		public let executableURL: URL
@@ -28,22 +24,20 @@
 		}
 
 		/// Connect to the NDI source and prepare to record.
+		/// The recording and its message stream are valid only for the duration of `body`.
 		/// - Parameters:
 		///   - writeThumbnail: Whether a proxy file should be written.
-		///   - autostart: This command may be used to achieve frame-accurate recording as needed. When specified, the record application will run and connect to the remote source; however, it will not immediately start recording. It will then start immediately when you call ``start()``.
+		///   - autostart: This command may be used to achieve frame-accurate recording as needed. When specified, the record application will run and connect to the remote source; however, it will not immediately start recording. It will then start immediately when you call ``Recording/start()``.
 		///   - autochop: This specifies that if the video properties change (resolution, framerate, aspect ratio), the existing file is chopped, and a new one starts with a number appended. When false, it will simply exit when the video properties change, allowing you to start it again with a new file name should you want. By default, if the video format changes, it will open a new file in that format without dropping any frames.
-		@discardableResult public func launch(
+		///   - body: An asynchronous operation that controls the recording and consumes its messages.
+		public func launch<Result: Sendable>(
 			writeThumbnail: Bool = true,
 			autostart: Bool = true,
-			autochop: Bool = true
-		) throws -> MessageStream {
+			autochop: Bool = true,
+			body: (Recording) async throws -> Result
+		) async throws -> Result {
 			let inputName = self.inputName
-
-			process.standardOutput = standardOutput
-			process.standardError = standardError
-			process.standardInput = standardInput
-
-			process.executableURL = executableURL
+			let executablePath = executableURL.path(percentEncoded: false)
 
 //			/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.Recording -i "MEVO-N648P (MEVO-N648P)" -o Test/Library/NDI\ SDK\ for\ Apple/bin/Application.Mac.NDI.DirectoryService
 
@@ -75,69 +69,85 @@
 			if !autostart {
 				arguments.append("-noautostart")
 			}
-
-			process.arguments = arguments
 			logger.info("starting recording of '\(inputName)' at '\(outputPath)'")
 
-			try process.run()
+			let executionResult = try await run(
+				.path(.init(executablePath)),
+				arguments: .init(arguments),
+				input: .inputWriter,
+				output: .sequence,
+				error: .sequence
+			) { execution in
+				async let logStandardError: Void = {
+					for try await line in execution.standardError.strings() {
+						logger.info("\(line)")
+					}
+				}()
 
-			Task { [standardError] in
-				for try await line in standardError.fileHandleForReading.bytes.lines {
-					logger.info("\(line)")
-				}
+				let messages = execution.standardOutput.strings()
+					.compactMap { line in
+						do {
+							return try NDIMessageParser.parse(line: line)
+						} catch {
+							logger.error("failed to decode message '\(line)': \(error)")
+							return nil
+						}
+					}
+				let recording = Recording(
+					messages: MessageStream(underlyingStream: messages),
+					standardInputWriter: execution.standardInputWriter
+				)
+				let result = try await body(recording)
+				try await execution.standardInputWriter.finish()
+				try await logStandardError
+				return result
 			}
 
-			let stream = standardOutput.fileHandleForReading.bytes.lines
-				.compactMap { line in
-					do {
-						return try NDIMessageParser.parse(line: line)
-					} catch {
-						logger.error("failed to decode message '\(line)': \(error)")
-						return nil
-					}
-				}
-
-			return MessageStream(underlyingStream: stream)
+			return executionResult.closureResult
 		}
 
-		/// Start recording at this moment; this is used in conjunction with the “-noautostart” command line.
-		public func start() throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<start/>\n".utf8))
-		}
+		/// A scoped interface to a running NDI recording process.
+		public struct Recording {
+			public let messages: MessageStream
 
-		/// This will cancel recording and exit the moment that the file is completely on disk.
-		public func stop() throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<exit/>\n".utf8))
-		}
+			fileprivate let standardInputWriter: StandardInputWriter
 
-		/// Immediately stop recording, then restart another file without dropping frames.
-		public func chop(filename: String? = nil) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data("<record_chop/>\n".utf8))
-		}
+			/// Start recording at this moment; this is used in conjunction with the “-noautostart” command line.
+			public func start() async throws {
+				_ = try await standardInputWriter.write("<start/>\n")
+			}
 
-		/// Immediately stop recording, and start recording another file in potentially a different location without dropping frames. This allows a recording location to be changed on the fly, allowing you to span recordings across multiple drives or locations.
-		public func chop(filename: String) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_chop filename="\#(filename)"/>\n"#.utf8))
-		}
+			/// This will cancel recording and exit the moment that the file is completely on disk.
+			public func stop() async throws {
+				_ = try await standardInputWriter.write("<exit/>\n")
+			}
 
-		/// This allows you to control the current recorded audio levels in decibels. 1.2 would apply 1.2 dB of gain to the audio signal while recording to disk.
-		public func setRecordLevelGain(_ gain: Float) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_level gain="\#(gain)"/>\n"#.utf8))
-		}
+			/// Immediately stop recording, then restart another file without dropping frames.
+			public func chop() async throws {
+				_ = try await standardInputWriter.write("<record_chop/>\n")
+			}
 
-		/// Enable (or disable) automatic gain control for audio, which will use an expander/compressor to normalize the audio while it is being recorded.
-		public func setAutomaticGainControl(_ isOn: Bool) throws {
-			try standardInput.fileHandleForWriting
-				.write(contentsOf: Data(#"<record_agc enabled="\#(isOn)"/>\n"#.utf8))
+			/// Immediately stop recording, and start recording another file in potentially a different location without dropping frames. This allows a recording location to be changed on the fly, allowing you to span recordings across multiple drives or locations.
+			public func chop(filename: String) async throws {
+				_ = try await standardInputWriter.write(#"<record_chop filename="\#(filename)"/>\n"#)
+			}
+
+			/// This allows you to control the current recorded audio levels in decibels. 1.2 would apply 1.2 dB of gain to the audio signal while recording to disk.
+			public func setRecordLevelGain(_ gain: Float) async throws {
+				_ = try await standardInputWriter.write(#"<record_level gain="\#(gain)"/>\n"#)
+			}
+
+			/// Enable (or disable) automatic gain control for audio, which will use an expander/compressor to normalize the audio while it is being recorded.
+			public func setAutomaticGainControl(_ isOn: Bool) async throws {
+				_ = try await standardInputWriter.write(#"<record_agc enabled="\#(isOn)"/>\n"#)
+			}
 		}
 
 		public struct MessageStream: AsyncSequence {
-			typealias UnderlyingStream = AsyncCompactMapSequence<AsyncLineSequence<FileHandle.AsyncBytes>, NDIMessage>
+			typealias UnderlyingStream = AsyncCompactMapSequence<
+				SubprocessOutputSequence.StringSequence<UTF8>,
+				NDIMessage
+			>
 
 			fileprivate let underlyingStream: UnderlyingStream
 
@@ -155,10 +165,6 @@
 				public typealias Element = NDIMessage
 
 				fileprivate var underlyingIterator: UnderlyingStream.AsyncIterator
-
-				fileprivate init(underlyingIterator: UnderlyingStream.AsyncIterator) {
-					self.underlyingIterator = underlyingIterator
-				}
 
 				public mutating func next() async throws -> NDIMessage? {
 					try await underlyingIterator.next()

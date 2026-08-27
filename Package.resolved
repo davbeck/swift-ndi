@@ -1,5 +1,5 @@
 {
-  "originHash" : "adc3a3ca648d9327322acd3fe337d3f3bf9dd87b6fe8ae24c48e5c196839f55a",
+  "originHash" : "d0804e2d9fe5a67987253289ac357ee823ddf5cf8d4e3b1c5772ff1e348e0ac0",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -38,12 +38,30 @@
       }
     },
     {
+      "identity" : "swift-subprocess",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-subprocess.git",
+      "state" : {
+        "revision" : "b3937ab85dd32f6e9435914599c1519074769c1a",
+        "version" : "1.0.0"
+      }
+    },
+    {
       "identity" : "swift-syntax",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax",
       "state" : {
         "revision" : "0687f71944021d616d34d922343dcef086855920",
         "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "swift-system",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-system",
+      "state" : {
+        "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
+        "version" : "1.8.1"
       }
     },
     {
